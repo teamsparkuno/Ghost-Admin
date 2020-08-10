@@ -7,30 +7,31 @@ export default Component.extend({
     uploadButtonText: 'Text',
     uploadButtonDisabled: true,
 
-    onUpload: null,
-    onAdd: null,
-
     shouldResetForm: true,
 
-    change(event) {
-        this.set('uploadButtonDisabled', false);
-        this.sendAction('onAdd');
-        this._file = event.target.files[0];
-    },
+    // closure actions
+    onUpload() {},
+    onAdd() {},
 
     actions: {
         upload() {
-            if (!this.get('uploadButtonDisabled') && this._file) {
-                this.sendAction('onUpload', this._file);
+            if (!this.uploadButtonDisabled && this._file) {
+                this.onUpload(this._file);
             }
 
             // Prevent double post by disabling the button.
             this.set('uploadButtonDisabled', true);
 
             // Reset form
-            if (this.get('shouldResetForm')) {
-                this.$().closest('form')[0].reset();
+            if (this.shouldResetForm) {
+                this.element.closest('form').reset();
             }
         }
+    },
+
+    change(event) {
+        this.set('uploadButtonDisabled', false);
+        this.onAdd();
+        this._file = event.target.files[0];
     }
 });

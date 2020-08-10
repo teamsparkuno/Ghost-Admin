@@ -1,113 +1,70 @@
 <section class="gh-canvas">
-    <header class="gh-canvas-header">
-        <h2 class="gh-canvas-title" data-test-screen-title>Your stories</h2>
+    <GhCanvasHeader class="gh-canvas-header post-header">
+        <GhCustomViewTitle @title="Posts" @query={{reset-query-params "posts"}} />
+
         <section class="view-actions">
-            {{#link-to "editor.new" class="gh-btn gh-btn-green" data-test-new-post-button=true}}<span>New story</span>{{/link-to}}
+            <GhContentfilter
+                @currentUser={{this.session.user}}
+                @selectedType={{this.selectedType}}
+                @availableTypes={{this.availableTypes}}
+                @onTypeChange={{action "changeType"}}
+                @selectedVisibility={{this.selectedVisibility}}
+                @availableVisibilities={{this.availableVisibilities}}
+                @onVisibilityChange={{action "changeVisibility"}}
+                @selectedAuthor={{this.selectedAuthor}}
+                @availableAuthors={{this.availableAuthors}}
+                @onAuthorChange={{action "changeAuthor"}}
+                @selectedTag={{this.selectedTag}}
+                @availableTags={{this.availableTags}}
+                @onTagChange={{action "changeTag"}}
+                @selectedOrder={{this.selectedOrder}}
+                @availableOrders={{this.availableOrders}}
+                @onOrderChange={{action "changeOrder"}}
+            />
+
+            <LinkTo @route="editor.new" @model="post" class="gh-btn gh-btn-green" data-test-new-post-button={{true}}><span>New post</span></LinkTo>
         </section>
-    </header>
-    <div class="gh-contentfilter">
-        <div class="gh-contentfilter-left">
-            {{#power-select
-                selected=selectedType
-                options=availableTypes
-                searchEnabled=false
-                onchange=(action "changeType")
-                tagName="div"
-                classNames="gh-contentfilter-menu gh-contentfilter-type"
-                triggerClass="gh-contentfilter-menu-trigger"
-                dropdownClass="gh-contentfilter-menu-dropdown"
-                matchTriggerWidth=false
-                data-test-type-select=true
-                as |type|
-            }}
-                {{type.name}}
-            {{/power-select}}
-
-            {{#unless session.user.isAuthor}}
-            {{#power-select
-                selected=selectedAuthor
-                options=availableAuthors
-                searchField="name"
-                onchange=(action "changeAuthor")
-                tagName="div"
-                classNames="gh-contentfilter-menu gh-contentfilter-author"
-                triggerClass="gh-contentfilter-menu-trigger"
-                dropdownClass="gh-contentfilter-menu-dropdown"
-                searchPlaceholder="Search authors"
-                matchTriggerWidth=false
-                data-test-author-select=true
-                as |author|
-            }}
-                {{author.name}}
-            {{/power-select}}
-            {{/unless}}
-
-            {{#power-select
-                selected=selectedTag
-                options=availableTags
-                searchField="name"
-                onchange=(action "changeTag")
-                tagName="div"
-                classNames="gh-contentfilter-menu gh-contentfilter-tag"
-                triggerClass="gh-contentfilter-menu-trigger"
-                dropdownClass="gh-contentfilter-menu-dropdown"
-                searchPlaceholder="Search tags"
-                matchTriggerWidth=false
-                optionsComponent="power-select-vertical-collection-options"
-                data-test-tag-select=true
-                as |tag|
-            }}
-                {{tag.name}}
-            {{/power-select}}
-        </div>
-
-        <div class="gh-contentfilter-right">
-            Sort by:
-            {{#power-select
-                selected=selectedOrder
-                options=availableOrders
-                searchEnabled=false
-                onchange=(action "changeOrder")
-                tagName="div"
-                classNames="gh-contentfilter-menu gh-contentfilter-sort"
-                triggerClass="gh-contentfilter-menu-trigger"
-                dropdownClass="gh-contentfilter-menu-dropdown"
-                horizontalPosition="right"
-                matchTriggerWidth=false
-                data-test-order-select=true
-                as |order|
-            }}
-                {{order.name}}
-            {{/power-select}}
-        </div>
-    </div>
+    </GhCanvasHeader>
 
     <section class="content-list">
-        <ol class="posts-list">
-            {{#each model as |post|}}
-                {{gh-posts-list-item
-                    post=post
-                    onDoubleClick=(action "openEditor")
-                    data-test-post-id=post.id}}
-            {{else}}
-                <li class="no-posts-box">
-                    <div class="no-posts">
-                        {{#if showingAll}}
-                            <h3>You haven't written any stories yet!</h3>
-                            {{#link-to "editor.new"}}<button type="button" class="gh-btn gh-btn-green gh-btn-lg"><span>Write a new Story</span></button>{{/link-to}}
-                        {{else}}
-                            <h3>No stories match the current filter</h3>
-                            {{#link-to "posts.index" (query-params type=null author=null tag=null)}}<button type="button" class="gh-btn gh-btn-lg"><span>Show all stories</span></button>{{/link-to}}
-                        {{/if}}
-                    </div>
+        <ol class="posts-list gh-list {{unless this.postsInfinityModel "no-posts"}}">
+            {{#if this.postsInfinityModel}}
+                <li class="gh-list-row header">
+                    <div class="gh-list-header no-padding">{{!--Favorite indicator column: no header--}}</div>
+                    <div class="gh-list-header gh-posts-title-header">Title</div>
+                    <div class="gh-list-header gh-posts-status-header">Status</div>
+                    <div class="gh-list-header gh-posts-lastupdate-header">Last update</div>
                 </li>
+            {{/if}}
+
+            {{#each this.postsInfinityModel as |post|}}
+                <GhPostsListItem
+                    @post={{post}}
+                    data-test-post-id={{post.id}} />
+            {{else}}
+            <li class="no-posts-box">
+                <div class="no-posts">
+                    {{#if this.showingAll}}
+                        {{svg-jar "posts-placeholder" class="gh-posts-placeholder"}}
+                        <h3>You haven't written any posts yet!</h3>
+                        <LinkTo @route="editor.new" @model="post" class="gh-btn gh-btn-green gh-btn-lg">
+                            <span>Write a new post</span>
+                        </LinkTo>
+                    {{else}}
+                        <h3>No posts match the current filter</h3>
+                        <LinkTo @route="posts" @query={{hash type=null author=null tag=null}} class="gh-btn gh-btn-lg">
+                            <span>Show all posts</span>
+                        </LinkTo>
+                    {{/if}}
+                </div>
+            </li>
             {{/each}}
         </ol>
 
-        {{infinity-loader
-            infinityModel=model
-            scrollable=".gh-main"
-            triggerOffset=1000}}
+        <GhInfinityLoader
+            @infinityModel={{this.postsInfinityModel}}
+            @scrollable=".gh-main"
+            @triggerOffset={{1000}} />
     </section>
 
     {{outlet}}

@@ -1,26 +1,17 @@
 /* eslint-disable camelcase */
 import ApplicationSerializer from 'ghost-admin/serializers/application';
-import EmbeddedRecordsMixin from 'ember-data/serializers/embedded-records-mixin';
+import {EmbeddedRecordsMixin} from '@ember-data/serializer/rest';
 import {pluralize} from 'ember-inflector';
 
 export default ApplicationSerializer.extend(EmbeddedRecordsMixin, {
     // settings for the EmbeddedRecordsMixin.
     attrs: {
+        authors: {embedded: 'always'},
         tags: {embedded: 'always'},
         publishedAtUTC: {key: 'published_at'},
         createdAtUTC: {key: 'created_at'},
-        updatedAtUTC: {key: 'updated_at'}
-    },
-
-    normalize(model, hash, prop) {
-        // this is to enable us to still access the raw authorId
-        // without requiring an extra get request (since it is an
-        // async relationship).
-        if ((prop === 'post' || prop === 'posts') && hash.author !== undefined) {
-            hash.author_id = hash.author;
-        }
-
-        return this._super(...arguments);
+        updatedAtUTC: {key: 'updated_at'},
+        email: {embedded: 'always'}
     },
 
     normalizeSingleResponse(store, primaryModelClass, payload) {
@@ -39,23 +30,22 @@ export default ApplicationSerializer.extend(EmbeddedRecordsMixin, {
         return this._super(...arguments);
     },
 
-    serializeIntoHash(hash, type, record, options) {
-        options = options || {};
-        options.includeId = true;
+    serialize(/*snapshot, options*/) {
+        let json = this._super(...arguments);
 
-        // We have a plural root in the API
-        let root = pluralize(type.modelName);
-        let data = this.serialize(record, options);
-
-        // Properties that exist on the model but we don't want sent in the payload
-
-        delete data.uuid;
-        delete data.html;
         // Inserted locally as a convenience.
-        delete data.author_id;
-        // Read-only virtual property.
-        delete data.url;
+        delete json.author_id;
+        // Read-only virtual properties
+        delete json.uuid;
+        delete json.url;
+        delete json.send_email_when_published;
+        // Deprecated property (replaced with data.authors)
+        delete json.author;
 
-        hash[root] = [data];
+        if (json.visibility === null) {
+            delete json.visibility;
+        }
+
+        return json;
     }
 });

@@ -1,17 +1,17 @@
 import 'ghost-admin/utils/link-component';
 import 'ghost-admin/utils/route';
-import 'ghost-admin/utils/text-field';
 import Application from '@ember/application';
-import Ember from 'ember';
-import Resolver from './resolver';
-import config from './config/environment';
+import Resolver from 'ember-resolver';
+import config from 'ghost-admin/config/environment';
 import loadInitializers from 'ember-load-initializers';
+import {registerWarnHandler} from '@ember/debug';
 
 const App = Application.extend({
     Resolver,
     modulePrefix: config.modulePrefix,
     podModulePrefix: config.podModulePrefix,
 
+    // eslint-disable-next-line
     customEvents: {
         touchstart: null,
         touchmove: null,
@@ -22,7 +22,7 @@ const App = Application.extend({
 
 // TODO: remove once the validations refactor is complete
 // eslint-disable-next-line
-Ember.Debug.registerWarnHandler((message, options, next) => {
+registerWarnHandler((message, options, next) => {
     let skip = [
         'ds.errors.add',
         'ds.errors.remove',

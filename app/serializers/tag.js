@@ -8,17 +8,27 @@ export default ApplicationSerializer.extend({
         updatedAtUTC: {key: 'updated_at'}
     },
 
-    serializeIntoHash(hash, type, record, options) {
-        options = options || {};
-        options.includeId = true;
-
-        let root = pluralize(type.modelName);
-        let data = this.serialize(record, options);
+    serialize(/*snapshot, options*/) {
+        let json = this._super(...arguments);
 
         // Properties that exist on the model but we don't want sent in the payload
+        delete json.count;
 
-        delete data.count;
+        return json;
+    },
 
-        hash[root] = [data];
+    // if we use `queryRecord` ensure we grab the first record to avoid
+    // DS.SERIALIZER.REST.QUERYRECORD-ARRAY-RESPONSE deprecations
+    normalizeResponse(store, primaryModelClass, payload, id, requestType) {
+        if (requestType === 'queryRecord') {
+            let singular = primaryModelClass.modelName;
+            let plural = pluralize(singular);
+
+            if (payload[plural]) {
+                payload[singular] = payload[plural][0];
+                delete payload[plural];
+            }
+        }
+        return this._super(...arguments);
     }
 });

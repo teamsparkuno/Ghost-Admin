@@ -4,14 +4,18 @@ import {Response} from 'ember-cli-mirage';
 export function paginatedResponse(modelName) {
     return function (schema, request) {
         let page = +request.queryParams.page || 1;
-        let limit = +request.queryParams.limit || 15;
-        let allModels = this.serialize(schema[modelName].all())[modelName];
+        let limit = request.queryParams.limit;
+        let collection = schema[modelName].all();
 
-        return paginateModelArray(modelName, allModels, page, limit);
+        if (limit !== 'all') {
+            limit = +request.queryParams.limit || 15;
+        }
+
+        return paginateModelCollection(modelName, collection, page, limit);
     };
 }
 
-export function paginateModelArray(modelName, allModels, page, limit) {
+export function paginateModelCollection(modelName, collection, page, limit) {
     let pages, next, prev, models;
 
     if (limit === 'all') {
@@ -22,37 +26,40 @@ export function paginateModelArray(modelName, allModels, page, limit) {
         let start = (page - 1) * limit;
         let end = start + limit;
 
-        pages = Math.ceil(allModels.length / limit);
-        models = allModels.slice(start, end);
+        pages = Math.ceil(collection.models.length / limit);
+        models = collection.models.slice(start, end);
 
         if (start > 0) {
             prev = page - 1;
         }
 
-        if (end < allModels.length) {
+        if (end < collection.models.length) {
             next = page + 1;
         }
     }
 
-    return {
-        meta: {
-            pagination: {
-                page,
-                limit,
-                pages,
-                total: allModels.length,
-                next: next || null,
-                prev: prev || null
-            }
-        },
-        [modelName]: models || allModels
+    collection.meta = {
+        pagination: {
+            page,
+            limit,
+            pages,
+            total: collection.models.length,
+            next: next || null,
+            prev: prev || null
+        }
     };
+
+    if (models) {
+        collection.models = models;
+    }
+
+    return collection;
 }
 
 export function maintenanceResponse() {
     return new Response(503, {}, {
         errors: [{
-            errorType: 'Maintenance'
+            type: 'Maintenance'
         }]
     });
 }
@@ -60,7 +67,7 @@ export function maintenanceResponse() {
 export function versionMismatchResponse() {
     return new Response(400, {}, {
         errors: [{
-            errorType: 'VersionMismatchError'
+            type: 'VersionMismatchError'
         }]
     });
 }

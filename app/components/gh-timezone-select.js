@@ -1,44 +1,46 @@
 import Component from '@ember/component';
 import moment from 'moment';
 import {computed} from '@ember/object';
-import {inject as injectService} from '@ember/service';
-import {invokeAction} from 'ember-invoke-action';
 import {mapBy} from '@ember/object/computed';
+import {inject as service} from '@ember/service';
 
 export default Component.extend({
+    clock: service(),
+
     classNames: ['form-group', 'for-select'],
 
-    activeTimezone: null,
+    timezone: null,
     availableTimezones: null,
 
-    clock: injectService(),
+    // Allowed actions
+    update: () => {},
 
     availableTimezoneNames: mapBy('availableTimezones', 'name'),
 
-    hasTimezoneOverride: computed('activeTimezone', 'availableTimezoneNames', function () {
-        let activeTimezone = this.get('activeTimezone');
-        let availableTimezoneNames = this.get('availableTimezoneNames');
+    hasTimezoneOverride: computed('timezone', 'availableTimezoneNames', function () {
+        let timezone = this.timezone;
+        let availableTimezoneNames = this.availableTimezoneNames;
 
-        return !availableTimezoneNames.includes(activeTimezone);
+        return !availableTimezoneNames.includes(timezone);
     }),
 
-    selectedTimezone: computed('activeTimezone', 'availableTimezones', 'hasTimezoneOverride', function () {
-        let hasTimezoneOverride = this.get('hasTimezoneOverride');
-        let activeTimezone = this.get('activeTimezone');
-        let availableTimezones = this.get('availableTimezones');
+    selectedTimezone: computed('timezone', 'availableTimezones', 'hasTimezoneOverride', function () {
+        let hasTimezoneOverride = this.hasTimezoneOverride;
+        let timezone = this.timezone;
+        let availableTimezones = this.availableTimezones;
 
         if (hasTimezoneOverride) {
             return {name: '', label: ''};
         }
 
         return availableTimezones
-            .filterBy('name', activeTimezone)
+            .filterBy('name', timezone)
             .get('firstObject');
     }),
 
     selectableTimezones: computed('availableTimezones', 'hasTimezoneOverride', function () {
-        let hasTimezoneOverride = this.get('hasTimezoneOverride');
-        let availableTimezones = this.get('availableTimezones');
+        let hasTimezoneOverride = this.hasTimezoneOverride;
+        let availableTimezones = this.availableTimezones;
 
         if (hasTimezoneOverride) {
             return [{name: '', label: ''}, ...availableTimezones];
@@ -47,9 +49,9 @@ export default Component.extend({
         return availableTimezones;
     }),
 
-    localTime: computed('hasTimezoneOverride', 'activeTimezone', 'selectedTimezone', 'clock.second', function () {
-        let hasTimezoneOverride = this.get('hasTimezoneOverride');
-        let timezone = hasTimezoneOverride ? this.get('activeTimezone') : this.get('selectedTimezone.name');
+    localTime: computed('hasTimezoneOverride', 'timezone', 'selectedTimezone', 'clock.second', function () {
+        let hasTimezoneOverride = this.hasTimezoneOverride;
+        let timezone = hasTimezoneOverride ? this.timezone : this.get('selectedTimezone.name');
 
         this.get('clock.second');
         return timezone ? moment().tz(timezone).format('HH:mm:ss') : moment().utc().format('HH:mm:ss');
@@ -57,7 +59,7 @@ export default Component.extend({
 
     actions: {
         setTimezone(timezone) {
-            invokeAction(this, 'update', timezone);
+            this.update(timezone);
         }
     }
 });

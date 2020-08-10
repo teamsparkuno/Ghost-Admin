@@ -1,59 +1,67 @@
-/* eslint-disable camelcase */
 import AuthenticatedRoute from 'ghost-admin/routes/authenticated';
-import base from 'ghost-admin/mixins/editor-base-route';
+import {pluralize} from 'ember-inflector';
 
-export default AuthenticatedRoute.extend(base, {
-    titleToken: 'Editor',
-
+export default AuthenticatedRoute.extend({
     beforeModel(transition) {
-        this.set('_transitionedFromNew', transition.data.fromNew);
-
         this._super(...arguments);
+
+        // if the transition is not new->edit, reset the post on the controller
+        // so that the editor view is cleared before showing the loading state
+        if (transition.urlMethod !== 'replace') {
+            let editor = this.controllerFor('editor');
+            editor.set('post', null);
+            editor.reset();
+        }
     },
 
-    model(params) {
-        /* eslint-disable camelcase */
+    model(params, transition) {
+        // eslint-disable-next-line camelcase
+        let {type: modelName, post_id} = params;
+
+        if (!['post', 'page'].includes(modelName)) {
+            let path = transition.intent.url.replace(/^\//, '');
+            return this.replaceWith('error404', {path, status: 404});
+        }
+
         let query = {
-            id: params.post_id,
-            status: 'all',
-            staticPages: 'all',
-            formats: 'mobiledoc,plaintext'
+            id: post_id
         };
-        /* eslint-enable camelcase */
 
-        return this.store.query('post', query).then((records) => {
-            let post = records.get('firstObject');
-
-            if (post) {
-                return post;
-            }
-
-            return this.replaceWith('posts.index');
-        });
+        return this.store.query(modelName, query)
+            .then(records => records.get('firstObject'));
     },
 
+    // the API will return a post even if the logged in user doesn't have
+    // permission to edit it (all posts are public) so we need to do our
+    // own permissions check and redirect if necessary
     afterModel(post) {
         this._super(...arguments);
 
         return this.get('session.user').then((user) => {
-            if (user.get('isAuthor') && !post.isAuthoredByUser(user)) {
-                return this.replaceWith('posts.index');
+            let returnRoute = pluralize(post.constructor.modelName);
+
+            if (user.get('isAuthorOrContributor') && !post.isAuthoredByUser(user)) {
+                return this.replaceWith(returnRoute);
+            }
+
+            // If the post is not a draft and user is contributor, redirect to index
+            if (user.get('isContributor') && !post.get('isDraft')) {
+                return this.replaceWith(returnRoute);
             }
         });
     },
 
-    setupController(controller) {
-        this._super(...arguments);
-        controller.set('shouldFocusEditor', this.get('_transitionedFromNew'));
+    serialize(model) {
+        return {
+            type: model.constructor.modelName,
+            post_id: model.id
+        };
     },
 
-    actions: {
-        authorizationFailed() {
-            this.get('controller').send('toggleReAuthenticateModal');
-        },
-
-        redirectToContentScreen() {
-            this.transitionTo('posts');
-        }
+    // there's no specific controller for this route, instead all editor
+    // handling is done on the editor route/controler
+    setupController(controller, post) {
+        let editor = this.controllerFor('editor');
+        editor.setPost(post);
     }
 });

@@ -1,4 +1,3 @@
-/* jshint expr:true */
 import SlackObject from 'ghost-admin/models/slack-integration';
 import validator from 'ghost-admin/validators/slack-integration';
 import {
@@ -47,7 +46,8 @@ describe('Unit: Validator: slack-integration', function () {
         let validUrls = [
             'https://hooks.slack.com/services/;alskdjf',
             'https://hooks.slack.com/services/123445678',
-            'https://hooks.slack.com/services/some_webhook'
+            'https://hooks.slack.com/services/some_webhook',
+            'https://discordapp.com/api/webhooks/380692408364433418/mGLHSRyEoUaTvY91Te16WOT8Obn-BrJoiTNoxeUqhb6klKERb9xaZkUBYC5AeduwYCCy/slack'
         ];
 
         validUrls.forEach(function (url) {

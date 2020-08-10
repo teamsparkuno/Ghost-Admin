@@ -1,15 +1,14 @@
 import Ember from 'ember';
 import RSVP from 'rsvp';
-import Service from '@ember/service';
+import Service, {inject as service} from '@ember/service';
 import ValidationEngine from 'ghost-admin/mixins/validation-engine';
 import {get} from '@ember/object';
-import {inject as injectService} from '@ember/service';
 
 // ember-cli-shims doesn't export _ProxyMixin
 const {_ProxyMixin} = Ember;
 
 export default Service.extend(_ProxyMixin, ValidationEngine, {
-    store: injectService(),
+    store: service(),
 
     // will be set to the single Settings model, it's a reference so any later
     // changes to the settings object in the store will be reflected
@@ -27,8 +26,8 @@ export default Service.extend(_ProxyMixin, ValidationEngine, {
     // save we have problems with the missing settings being removed or reset
     _loadSettings() {
         if (!this._loadingPromise) {
-            this._loadingPromise = this.get('store')
-                .queryRecord('setting', {type: 'blog,theme,private'})
+            this._loadingPromise = this.store
+                .queryRecord('setting', {group: 'site,theme,private,members,portal,email,amp,labs,slack,unsplash,views'})
                 .then((settings) => {
                     this._loadingPromise = null;
                     return settings;
@@ -39,7 +38,7 @@ export default Service.extend(_ProxyMixin, ValidationEngine, {
     },
 
     fetch() {
-        if (!this.get('content')) {
+        if (!this.content) {
             return this.reload();
         } else {
             return RSVP.resolve(this);
@@ -54,20 +53,23 @@ export default Service.extend(_ProxyMixin, ValidationEngine, {
         });
     },
 
-    save() {
-        let settings = this.get('content');
+    async save() {
+        let settings = this.content;
 
         if (!settings) {
             return false;
         }
 
-        return settings.save().then((settings) => {
-            this.set('settledIcon', get(settings, 'icon'));
-            return settings;
-        });
+        await settings.save();
+        this.set('settledIcon', settings.icon);
+        return settings;
     },
 
     rollbackAttributes() {
-        return this.get('content').rollbackAttributes();
+        return this.content.rollbackAttributes();
+    },
+
+    changedAttributes() {
+        return this.content.changedAttributes();
     }
 });

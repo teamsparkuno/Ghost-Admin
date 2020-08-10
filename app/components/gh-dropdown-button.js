@@ -1,8 +1,10 @@
 import Component from '@ember/component';
 import DropdownMixin from 'ghost-admin/mixins/dropdown-mixin';
-import {inject as injectService} from '@ember/service';
+import {inject as service} from '@ember/service';
 
 export default Component.extend(DropdownMixin, {
+    dropdown: service(),
+
     tagName: 'button',
     attributeBindings: ['href', 'role'],
     role: 'button',
@@ -10,14 +12,12 @@ export default Component.extend(DropdownMixin, {
     // matches with the dropdown this button toggles
     dropdownName: null,
 
-    dropdown: injectService(),
-
     // Notify dropdown service this dropdown should be toggled
     click(event) {
         this._super(event);
-        this.get('dropdown').toggleDropdown(this.get('dropdownName'), this);
+        this.dropdown.toggleDropdown(this.dropdownName, this);
 
-        if (this.get('tagName') === 'a') {
+        if (this.tagName === 'a') {
             return false;
         }
     }

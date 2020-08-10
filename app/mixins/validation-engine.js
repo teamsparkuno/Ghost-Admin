@@ -1,7 +1,13 @@
-import DS from 'ember-data';
+// TODO: remove usage of Ember Data's private `Errors` class when refactoring validations
+// eslint-disable-next-line
+import CustomViewValidator from 'ghost-admin/validators/custom-view';
+import DS from 'ember-data'; // eslint-disable-line
+import IntegrationValidator from 'ghost-admin/validators/integration';
 import InviteUserValidator from 'ghost-admin/validators/invite-user';
+import LabelValidator from 'ghost-admin/validators/label';
+import MemberValidator from 'ghost-admin/validators/member';
 import Mixin from '@ember/object/mixin';
-import Model from 'ember-data/model';
+import Model from '@ember-data/model';
 import NavItemValidator from 'ghost-admin/validators/nav-item';
 import PostValidator from 'ghost-admin/validators/post';
 import RSVP from 'rsvp';
@@ -11,17 +17,12 @@ import SetupValidator from 'ghost-admin/validators/setup';
 import SigninValidator from 'ghost-admin/validators/signin';
 import SignupValidator from 'ghost-admin/validators/signup';
 import SlackIntegrationValidator from 'ghost-admin/validators/slack-integration';
-import SubscriberValidator from 'ghost-admin/validators/subscriber';
 import TagSettingsValidator from 'ghost-admin/validators/tag-settings';
-import UnsplashIntegrationValidator from 'ghost-admin/validators/unsplash-integration';
 import UserValidator from 'ghost-admin/validators/user';
-import ValidatorExtensions from 'ghost-admin/utils/validator-extensions';
+import WebhookValidator from 'ghost-admin/validators/webhook';
 import {A as emberA, isArray as isEmberArray} from '@ember/array';
 
 const {Errors} = DS;
-
-// our extensions to the validator library
-ValidatorExtensions.init();
 
 /**
 * The class that gets this mixin will receive these properties and functions.
@@ -36,6 +37,7 @@ export default Mixin.create({
     // in that case the model will be the class that the ValidationEngine
     // was mixed into, i.e. the controller or Ember Data model.
     validators: {
+        customView: CustomViewValidator,
         inviteUser: InviteUserValidator,
         navItem: NavItemValidator,
         post: PostValidator,
@@ -45,10 +47,12 @@ export default Mixin.create({
         signin: SigninValidator,
         signup: SignupValidator,
         slackIntegration: SlackIntegrationValidator,
-        subscriber: SubscriberValidator,
         tag: TagSettingsValidator,
         user: UserValidator,
-        unsplashIntegration: UnsplashIntegrationValidator
+        member: MemberValidator,
+        integration: IntegrationValidator,
+        webhook: WebhookValidator,
+        label: LabelValidator
     },
 
     // This adds the Errors object to the validation engine, and shouldn't affect
@@ -89,13 +93,13 @@ export default Mixin.create({
             model = opts.model;
         } else if (this instanceof Model) {
             model = this;
-        } else if (this.get('model')) {
-            model = this.get('model');
+        } else if (this.model) {
+            model = this.model;
         }
 
-        type = this.get('validationType') || model.get('validationType');
+        type = this.validationType || model.get('validationType');
         validator = this.get(`validators.${type}`) || model.get(`validators.${type}`);
-        hasValidated = this.get('hasValidated');
+        hasValidated = this.hasValidated;
 
         opts.validationType = type;
 
@@ -134,7 +138,7 @@ export default Mixin.create({
         // model.destroyRecord() calls model.save() behind the scenes.
         // in that case, we don't need validation checks or error propagation,
         // because the model itself is being destroyed.
-        if (this.get('isDeleted')) {
+        if (this.isDeleted) {
             return this._super(...arguments);
         }
 

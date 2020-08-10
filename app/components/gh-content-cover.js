@@ -11,20 +11,14 @@ Example:
 **/
 
 import Component from '@ember/component';
-import {inject as injectService} from '@ember/service';
+import {inject as service} from '@ember/service';
 
 export default Component.extend({
-    ui: injectService(),
+    ui: service(),
 
     classNames: ['content-cover'],
 
-    onMouseEnter: null,
-
     click() {
-        this.get('ui').closeMenus();
-    },
-
-    mouseEnter() {
-        this.get('ui').closeAutoNav();
+        this.ui.closeMenus();
     }
 });

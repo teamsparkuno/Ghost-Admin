@@ -45,7 +45,10 @@ Session.vim
 /bower_components
 
 # misc
+./env*
 /connect.lock
-/coverage/*
+/coverage/
 /libpeerconnection.log
-testem.log
+/testem.log
+/concat-stats-for
+jsconfig.json

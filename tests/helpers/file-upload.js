@@ -1,6 +1,4 @@
-/* global Blob */
-import $ from 'jquery';
-import {registerAsyncHelper} from '@ember/test';
+import {triggerEvent} from '@ember/test-helpers';
 
 export function createFile(content = ['test'], options = {}) {
     let {
@@ -14,22 +12,12 @@ export function createFile(content = ['test'], options = {}) {
     return file;
 }
 
-export function fileUpload($element, content, options) {
-    let file = createFile(content, options);
-    // eslint-disable-next-line new-cap
-    let event = $.Event('change', {
-        testingFiles: [file]
-    });
-
-    $element.trigger(event);
-}
-
-export default registerAsyncHelper('fileUpload', function(app, selector, content, options) {
+export function fileUpload(target, content, options) {
     let file = createFile(content, options);
 
     return triggerEvent(
-        selector,
+        target,
         'change',
-        {testingFiles: [file]}
+        {files: [file]}
     );
-});
+}

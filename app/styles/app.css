@@ -1,12 +1,14 @@
-/* Stop: Normalize.
+/* Spirit - Ghost's CSS framework
 /* ---------------------------------------------------------- */
-@import "../../bower_components/normalize.css/normalize.css";
-
+/*
+    includes normalize v7 so must come first to avoid clobbering
+    our old non-Spirit classes
+*/
+@import "spirit/spirit.css";
 
 /* Patterns: Groups of Styles
 /* ---------------------------------------------------------- */
 @import "patterns/global.css";
-@import "patterns/_shame.css";
 @import "patterns/icons.css";
 @import "patterns/forms.css";
 @import "patterns/buttons.css";
@@ -28,13 +30,15 @@
 @import "components/pagination.css";
 @import "components/badges.css";
 @import "components/settings-menu.css";
-@import "components/selectize.css";
 @import "components/power-select.css";
 @import "components/power-calendar.css";
 @import "components/publishmenu.css";
 @import "components/popovers.css";
 @import "components/tour.css";
 @import "components/unsplash.css";
+@import "components/codemirror.css";
+@import "components/lists.css";
+@import "components/tabs.css";
 
 
 /* Layouts: Groups of Components
@@ -49,15 +53,15 @@
 @import "layouts/user.css";
 @import "layouts/about.css";
 @import "layouts/tags.css";
+@import "layouts/members.css";
 @import "layouts/error.css";
 @import "layouts/apps.css";
 @import "layouts/packages.css";
-@import "layouts/subscribers.css";
-
-
-/* Addons: gh-koenig
-/* ---------------------------------------------------------- */
-/*@import "addons/gh-koenig/gh-koenig.css";*/
+@import "layouts/labs.css";
+@import "layouts/whats-new.css";
+@import "layouts/preview-email.css";
+@import "layouts/portal-settings.css";
+@import "layouts/billing.css";
 
 
 /* ---------------------------✈️----------------------------- */

@@ -1,15 +1,13 @@
-import Service from '@ember/service';
-import {dasherize} from '@ember/string';
+import Service, {inject as service} from '@ember/service';
+import {dasherize, htmlSafe} from '@ember/string';
 import {A as emberA, isArray as isEmberArray} from '@ember/array';
 import {filter} from '@ember/object/computed';
-import {get} from '@ember/object';
-import {inject as injectService} from '@ember/service';
+import {get, set} from '@ember/object';
 import {isBlank} from '@ember/utils';
 import {
     isMaintenanceError,
     isVersionMismatchError
 } from 'ghost-admin/services/ajax';
-import {set} from '@ember/object';
 
 // Notification keys take the form of "noun.verb.message", eg:
 //
@@ -21,10 +19,16 @@ import {set} from '@ember/object';
 // specificity to re-use keys for i18n lookups
 
 export default Service.extend({
-    delayedNotifications: emberA(),
-    content: emberA(),
+    delayedNotifications: null,
+    content: null,
 
-    upgradeStatus: injectService(),
+    init() {
+        this._super(...arguments);
+        this.delayedNotifications = emberA();
+        this.content = emberA();
+    },
+
+    upgradeStatus: service(),
 
     alerts: filter('content', function (notification) {
         let status = get(notification, 'status');
@@ -38,8 +42,8 @@ export default Service.extend({
 
     handleNotification(message, delayed) {
         // If this is an alert message from the server, treat it as html safe
-        if (typeof message.toJSON === 'function' && message.get('status') === 'alert') {
-            message.set('message', message.get('message').htmlSafe());
+        if (message.constructor.modelName === 'notification' && message.get('status') === 'alert') {
+            message.set('message', htmlSafe(message.get('message')));
         }
 
         if (!get(message, 'status')) {
@@ -51,10 +55,17 @@ export default Service.extend({
             this._removeItems(get(message, 'status'), get(message, 'key'));
         }
 
+        // close existing alerts/notifications which have the same text to avoid stacking
+        let newText = get(message, 'message').string || get(message, 'message');
+        this.set('content', this.content.reject((notification) => {
+            let existingText = get(notification, 'message').string || get(notification, 'message');
+            return existingText === newText;
+        }));
+
         if (!delayed) {
-            this.get('content').pushObject(message);
+            this.content.pushObject(message);
         } else {
-            this.get('delayedNotifications').pushObject(message);
+            this.delayedNotifications.pushObject(message);
         }
     },
 
@@ -64,40 +75,39 @@ export default Service.extend({
         this.handleNotification({
             message,
             status: 'alert',
+            description: options.description,
+            icon: options.icon,
             type: options.type,
-            key: options.key
+            key: options.key,
+            actions: options.actions
         }, options.delayed);
     },
 
     showNotification(message, options) {
         options = options || {};
 
-        if (!options.doNotCloseNotifications) {
-            this.closeNotifications();
-        } else {
-            // TODO: this should be removed along with showErrors
-            options.key = undefined;
-        }
-
         this.handleNotification({
             message,
             status: 'notification',
+            description: options.description,
+            icon: options.icon,
             type: options.type,
-            key: options.key
+            key: options.key,
+            actions: options.actions
         }, options.delayed);
     },
 
     showAPIError(resp, options) {
         // handle "global" errors
         if (isVersionMismatchError(resp)) {
-            return this.get('upgradeStatus').requireUpgrade();
+            return this.upgradeStatus.requireUpgrade();
         } else if (isMaintenanceError(resp)) {
-            return this.get('upgradeStatus').maintenanceAlert();
+            return this.upgradeStatus.maintenanceAlert();
         }
 
         // loop over ember-ajax errors object
-        if (resp && isEmberArray(resp.errors)) {
-            return resp.errors.forEach((error) => {
+        if (resp && resp.payload && isEmberArray(resp.payload.errors)) {
+            return resp.payload.errors.forEach((error) => {
                 this._showAPIError(error, options);
             });
         }
@@ -127,20 +137,24 @@ export default Service.extend({
             msg = resp.message;
         }
 
+        if (!isBlank(get(resp, 'context'))) {
+            msg = `${msg} ${get(resp, 'context')}`;
+        }
+
         this.showAlert(msg, options);
     },
 
     displayDelayed() {
         this.delayedNotifications.forEach((message) => {
-            this.get('content').pushObject(message);
+            this.content.pushObject(message);
         });
-        this.delayedNotifications = [];
+        this.set('delayedNotifications', []);
     },
 
     closeNotification(notification) {
-        let content = this.get('content');
+        let content = this.content;
 
-        if (typeof notification.toJSON === 'function') {
+        if (notification.constructor.modelName === 'notification') {
             notification.deleteRecord();
             notification.save().finally(() => {
                 content.removeObject(notification);
@@ -159,7 +173,7 @@ export default Service.extend({
     },
 
     clearAll() {
-        this.get('content').clear();
+        this.content.clear();
     },
 
     _removeItems(status, key) {
@@ -170,14 +184,14 @@ export default Service.extend({
             let escapedKeyBase = keyBase.replace('.', '\\.');
             let keyRegex = new RegExp(`^${escapedKeyBase}`);
 
-            this.set('content', this.get('content').reject((item) => {
+            this.set('content', this.content.reject((item) => {
                 let itemKey = get(item, 'key');
                 let itemStatus = get(item, 'status');
 
                 return itemStatus === status && (itemKey && itemKey.match(keyRegex));
             }));
         } else {
-            this.set('content', this.get('content').rejectBy('status', status));
+            this.set('content', this.content.rejectBy('status', status));
         }
     },
 

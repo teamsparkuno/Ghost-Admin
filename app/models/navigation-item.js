@@ -7,17 +7,18 @@ export default EmberObject.extend(ValidationEngine, {
     label: '',
     url: '',
     isNew: false,
+    isSecondary: false,
 
     validationType: 'navItem',
 
     isComplete: computed('label', 'url', function () {
-        let {label, url} = this.getProperties('label', 'url');
+        let {label, url} = this;
 
         return !isBlank(label) && !isBlank(url);
     }),
 
     isBlank: computed('label', 'url', function () {
-        let {label, url} = this.getProperties('label', 'url');
+        let {label, url} = this;
 
         return isBlank(label) && isBlank(url);
     })

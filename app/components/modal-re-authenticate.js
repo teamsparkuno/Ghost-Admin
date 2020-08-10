@@ -1,30 +1,34 @@
 import $ from 'jquery';
 import ModalComponent from 'ghost-admin/components/modal-base';
 import ValidationEngine from 'ghost-admin/mixins/validation-engine';
-import {computed} from '@ember/object';
 import {htmlSafe} from '@ember/string';
-import {inject as injectService} from '@ember/service';
 import {isVersionMismatchError} from 'ghost-admin/services/ajax';
+import {reads} from '@ember/object/computed';
+import {inject as service} from '@ember/service';
 import {task} from 'ember-concurrency';
 
 export default ModalComponent.extend(ValidationEngine, {
+    config: service(),
+    notifications: service(),
+    session: service(),
+
     validationType: 'signin',
 
     authenticationError: null,
 
-    config: injectService(),
-    notifications: injectService(),
-    session: injectService(),
+    identification: reads('session.user.email'),
 
-    identification: computed('session.user.email', function () {
-        return this.get('session.user.email');
-    }),
+    actions: {
+        confirm() {
+            this.reauthenticate.perform();
+        }
+    },
 
     _authenticate() {
-        let session = this.get('session');
-        let authStrategy = 'authenticator:oauth2';
-        let identification = this.get('identification');
-        let password = this.get('password');
+        let session = this.session;
+        let authStrategy = 'authenticator:cookie';
+        let identification = this.identification;
+        let password = this.password;
 
         session.set('skipAuthSuccessHandler', true);
 
@@ -43,38 +47,30 @@ export default ModalComponent.extend(ValidationEngine, {
 
         this.set('authenticationError', null);
 
-        return this.validate({property: 'signin'}).then(() => {
-            return this._authenticate().then(() => {
-                this.get('notifications').closeAlerts();
-                this.send('closeModal');
-                return true;
-            }).catch((error) => {
-                if (error && error.errors) {
-                    error.errors.forEach((err) => {
-                        if (isVersionMismatchError(err)) {
-                            return this.get('notifications').showAPIError(error);
-                        }
-                        err.message = htmlSafe(err.context || err.message);
-                    });
+        return this.validate({property: 'signin'}).then(() => this._authenticate().then(() => {
+            this.notifications.closeAlerts();
+            this.send('closeModal');
+            return true;
+        }).catch((error) => {
+            if (error && error.payload && error.payload.errors) {
+                error.payload.errors.forEach((err) => {
+                    if (isVersionMismatchError(err)) {
+                        return this.notifications.showAPIError(error);
+                    }
+                    err.message = htmlSafe(err.context || err.message);
+                });
 
-                    this.get('errors').add('password', 'Incorrect password');
-                    this.get('hasValidated').pushObject('password');
-                    this.set('authenticationError', error.errors[0].message);
-                }
-            });
-        }, () => {
-            this.get('hasValidated').pushObject('password');
+                this.errors.add('password', 'Incorrect password');
+                this.hasValidated.pushObject('password');
+                this.set('authenticationError', error.payload.errors[0].message);
+            }
+        }), () => {
+            this.hasValidated.pushObject('password');
             return false;
         });
     },
 
     reauthenticate: task(function* () {
         return yield this._passwordConfirm();
-    }).drop(),
-
-    actions: {
-        confirm() {
-            this.get('reauthenticate').perform();
-        }
-    }
+    }).drop()
 });

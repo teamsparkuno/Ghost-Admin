@@ -1,17 +1,15 @@
 import Ember from 'ember';
-import Model from 'ember-data/model';
+import Model, {attr, belongsTo, hasMany} from '@ember-data/model';
 import ValidationEngine from 'ghost-admin/mixins/validation-engine';
-import attr from 'ember-data/attr';
 import boundOneWay from 'ghost-admin/utils/bound-one-way';
 import moment from 'moment';
-import {BLANK_DOC} from 'ghost-admin/components/gh-markdown-editor';
-import {belongsTo, hasMany} from 'ember-data/relationships';
 import {compare} from '@ember/utils';
-import {computed} from '@ember/object';
-import {equal, filterBy} from '@ember/object/computed';
-import {inject as injectService} from '@ember/service';
+// eslint-disable-next-line ghost/ember/no-observers
+import {computed, observer} from '@ember/object';
+import {equal, filterBy, reads} from '@ember/object/computed';
 import {isBlank} from '@ember/utils';
-import {observer} from '@ember/object';
+import {on} from '@ember/object/evented';
+import {inject as service} from '@ember/service';
 
 // ember-cli-shims doesn't export these so we must get them manually
 const {Comparable} = Ember;
@@ -68,48 +66,56 @@ function publishedAtCompare(postA, postB) {
 }
 
 export default Model.extend(Comparable, ValidationEngine, {
-    config: injectService(),
-    ghostPaths: injectService(),
-    clock: injectService(),
-    settings: injectService(),
+    config: service(),
+    feature: service(),
+    ghostPaths: service(),
+    clock: service(),
+    settings: service(),
 
+    displayName: 'post',
     validationType: 'post',
 
-    author: belongsTo('user', {async: true}),
-    authorId: attr('string'),
     createdAtUTC: attr('moment-utc'),
-    createdBy: attr(),
-    customExcerpt: attr(),
+    excerpt: attr('string'),
+    customExcerpt: attr('string'),
     featured: attr('boolean', {defaultValue: false}),
     featureImage: attr('string'),
+    canonicalUrl: attr('string'),
     codeinjectionFoot: attr('string', {defaultValue: ''}),
     codeinjectionHead: attr('string', {defaultValue: ''}),
+    customTemplate: attr('string'),
     ogImage: attr('string'),
     ogTitle: attr('string'),
     ogDescription: attr('string'),
     twitterImage: attr('string'),
     twitterTitle: attr('string'),
     twitterDescription: attr('string'),
+    emailSubject: attr('string'),
     html: attr('string'),
     locale: attr('string'),
+    visibility: attr('string'),
     metaDescription: attr('string'),
     metaTitle: attr('string'),
-    mobiledoc: attr('json-string', {defaultValue: () => BLANK_DOC}),
-    page: attr('boolean', {defaultValue: false}),
+    mobiledoc: attr('json-string'),
     plaintext: attr('string'),
     publishedAtUTC: attr('moment-utc'),
-    publishedBy: belongsTo('user', {async: true}),
     slug: attr('string'),
     status: attr('string', {defaultValue: 'draft'}),
-    tags: hasMany('tag', {
-        embedded: 'always',
-        async: false
-    }),
     title: attr('string', {defaultValue: ''}),
     updatedAtUTC: attr('moment-utc'),
-    updatedBy: attr(),
+    updatedBy: attr('number'),
     url: attr('string'),
     uuid: attr('string'),
+    sendEmailWhenPublished: attr('boolean', {defaultValue: false}),
+
+    authors: hasMany('user', {embedded: 'always', async: false}),
+    createdBy: belongsTo('user', {async: true}),
+    email: belongsTo('email', {async: false}),
+    publishedBy: belongsTo('user', {async: true}),
+    tags: hasMany('tag', {embedded: 'always', async: false}),
+
+    primaryAuthor: reads('authors.firstObject'),
+    primaryTag: reads('tags.firstObject'),
 
     scratch: null,
     titleScratch: null,
@@ -125,6 +131,7 @@ export default Model.extend(Comparable, ValidationEngine, {
     publishedAtBlogDate: '',
     publishedAtBlogTime: '',
 
+    canonicalUrlScratch: boundOneWay('canonicalUrl'),
     customExcerptScratch: boundOneWay('customExcerpt'),
     codeinjectionFootScratch: boundOneWay('codeinjectionFoot'),
     codeinjectionHeadScratch: boundOneWay('codeinjectionHead'),
@@ -135,21 +142,18 @@ export default Model.extend(Comparable, ValidationEngine, {
     twitterDescriptionScratch: boundOneWay('twitterDescription'),
     twitterTitleScratch: boundOneWay('twitterTitle'),
 
+    emailSubjectScratch: boundOneWay('emailSubject'),
+
     isPublished: equal('status', 'published'),
     isDraft: equal('status', 'draft'),
     internalTags: filterBy('tags', 'isInternal', true),
     isScheduled: equal('status', 'scheduled'),
 
-    absoluteUrl: computed('url', 'ghostPaths.url', 'config.blogUrl', function () {
+    previewUrl: computed('uuid', 'ghostPaths.url', 'config.blogUrl', function () {
         let blogUrl = this.get('config.blogUrl');
-        let postUrl = this.get('url');
-        return this.get('ghostPaths.url').join(blogUrl, postUrl);
-    }),
-
-    previewUrl: computed('uuid', 'ghostPaths.url', 'config.blogUrl', 'config.routeKeywords.preview', function () {
-        let blogUrl = this.get('config.blogUrl');
-        let uuid = this.get('uuid');
-        let previewKeyword = this.get('config.routeKeywords.preview');
+        let uuid = this.uuid;
+        // routeKeywords.preview: 'p'
+        let previewKeyword = 'p';
         // New posts don't have a preview
         if (!uuid) {
             return '';
@@ -160,9 +164,9 @@ export default Model.extend(Comparable, ValidationEngine, {
     // check every second to see if we're past the scheduled time
     // will only re-compute if this property is being observed elsewhere
     pastScheduledTime: computed('isScheduled', 'publishedAtUTC', 'clock.second', function () {
-        if (this.get('isScheduled')) {
+        if (this.isScheduled) {
             let now = moment.utc();
-            let publishedAtUTC = this.get('publishedAtUTC') || now;
+            let publishedAtUTC = this.publishedAtUTC || now;
             let pastScheduledTime = publishedAtUTC.diff(now, 'hours', true) < 0;
 
             // force a recompute
@@ -174,7 +178,7 @@ export default Model.extend(Comparable, ValidationEngine, {
         }
     }),
 
-    publishedAtBlogTZ: computed('publishedAtBlogDate', 'publishedAtBlogTime', 'settings.activeTimezone', {
+    publishedAtBlogTZ: computed('publishedAtBlogDate', 'publishedAtBlogTime', 'settings.timezone', {
         get() {
             return this._getPublishedAtBlogTZ();
         },
@@ -186,10 +190,10 @@ export default Model.extend(Comparable, ValidationEngine, {
     }),
 
     _getPublishedAtBlogTZ() {
-        let publishedAtUTC = this.get('publishedAtUTC');
-        let publishedAtBlogDate = this.get('publishedAtBlogDate');
-        let publishedAtBlogTime = this.get('publishedAtBlogTime');
-        let blogTimezone = this.get('settings.activeTimezone');
+        let publishedAtUTC = this.publishedAtUTC;
+        let publishedAtBlogDate = this.publishedAtBlogDate;
+        let publishedAtBlogTime = this.publishedAtBlogTime;
+        let blogTimezone = this.get('settings.timezone');
 
         if (!publishedAtUTC && isBlank(publishedAtBlogDate) && isBlank(publishedAtBlogTime)) {
             return null;
@@ -217,18 +221,20 @@ export default Model.extend(Comparable, ValidationEngine, {
 
             return publishedAtBlog;
         } else {
-            return moment.tz(this.get('publishedAtUTC'), blogTimezone);
+            return moment.tz(this.publishedAtUTC, blogTimezone);
         }
     },
 
-    _setPublishedAtBlogTZ: observer('publishedAtUTC', 'settings.activeTimezone', function () {
-        let publishedAtUTC = this.get('publishedAtUTC');
+    // TODO: is there a better way to handle this?
+    // eslint-disable-next-line ghost/ember/no-observers
+    _setPublishedAtBlogTZ: on('init', observer('publishedAtUTC', 'settings.timezone', function () {
+        let publishedAtUTC = this.publishedAtUTC;
         this._setPublishedAtBlogStrings(publishedAtUTC);
-    }).on('init'),
+    })),
 
     _setPublishedAtBlogStrings(momentDate) {
         if (momentDate) {
-            let blogTimezone = this.get('settings.activeTimezone');
+            let blogTimezone = this.get('settings.timezone');
             let publishedAtBlog = moment.tz(momentDate, blogTimezone);
 
             this.set('publishedAtBlogDate', publishedAtBlog.format('YYYY-MM-DD'));
@@ -244,7 +250,7 @@ export default Model.extend(Comparable, ValidationEngine, {
     // when returned from the server with ids.
     // https://github.com/emberjs/data/issues/1829
     updateTags() {
-        let tags = this.get('tags');
+        let tags = this.tags;
         let oldTags = tags.filterBy('id', null);
 
         tags.removeObjects(oldTags);
@@ -252,7 +258,7 @@ export default Model.extend(Comparable, ValidationEngine, {
     },
 
     isAuthoredByUser(user) {
-        return user.get('id') === this.get('authorId');
+        return this.authors.includes(user);
     },
 
     // a custom sort function is needed in order to sort the posts list the same way the server would:
@@ -306,7 +312,7 @@ export default Model.extend(Comparable, ValidationEngine, {
     // the publishedAtBlog{Date/Time} strings are set separately so they can be
     // validated, grab that time if it exists and set the publishedAtUTC
     beforeSave() {
-        let publishedAtBlogTZ = this.get('publishedAtBlogTZ');
+        let publishedAtBlogTZ = this.publishedAtBlogTZ;
         let publishedAtUTC = publishedAtBlogTZ ? publishedAtBlogTZ.utc() : null;
         this.set('publishedAtUTC', publishedAtUTC);
     }

@@ -44,8 +44,9 @@ key.setScope('default');
  * Find out more at the keymaster docs
  */
 export default Mixin.create({
+
     registerShortcuts() {
-        let shortcuts = this.get('shortcuts');
+        let shortcuts = this.shortcuts;
 
         Object.keys(shortcuts).forEach((shortcut) => {
             let scope = shortcuts[shortcut].scope || 'default';
@@ -68,11 +69,16 @@ export default Mixin.create({
     },
 
     removeShortcuts() {
-        let shortcuts = this.get('shortcuts');
+        let shortcuts = this.shortcuts;
 
         Object.keys(shortcuts).forEach((shortcut) => {
             let scope = shortcuts[shortcut].scope || 'default';
             key.unbind(shortcut, scope);
         });
+    },
+
+    willDestroy() {
+        this._super(...arguments);
+        this.removeShortcuts();
     }
 });

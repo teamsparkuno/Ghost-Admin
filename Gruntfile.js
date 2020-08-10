@@ -2,23 +2,17 @@
 /* eslint-disable object-shorthand */
 'use strict';
 
-module.exports = function(grunt) {
-
+module.exports = function (grunt) {
     // Find all of the task which start with `grunt-` and load them, rather than explicitly declaring them all
     require('matchdep').filterDev(['grunt-*', '!grunt-cli']).forEach(grunt.loadNpmTasks);
 
     grunt.initConfig({
         clean: {
             built: {
-                src: [
-                    'dist/**'
-                ]
+                src: ['dist/**']
             },
             dependencies: {
-                src: [
-                    'bower_components/**',
-                    'node_modules/**'
-                ]
+                src: ['node_modules/**']
             },
             tmp: {
                 src: ['tmp/**']
@@ -35,10 +29,6 @@ module.exports = function(grunt) {
         shell: {
             'npm-install': {
                 command: 'yarn install'
-            },
-
-            'bower-install': {
-                command: 'bower install'
             },
 
             ember: {
@@ -75,6 +65,6 @@ module.exports = function(grunt) {
     });
 
     grunt.registerTask('init', 'Install the client dependencies',
-        ['shell:npm-install', 'shell:bower-install']
+        ['shell:npm-install']
     );
 };

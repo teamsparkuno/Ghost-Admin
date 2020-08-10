@@ -1,24 +1,34 @@
+/* eslint-disable ghost/ember/alias-model-in-controller */
 import $ from 'jquery';
 import Controller from '@ember/controller';
 import NavigationItem from 'ghost-admin/models/navigation-item';
 import RSVP from 'rsvp';
 import {computed} from '@ember/object';
-import {inject as injectService} from '@ember/service';
 import {isEmpty} from '@ember/utils';
 import {isThemeValidationError} from 'ghost-admin/services/ajax';
 import {notEmpty} from '@ember/object/computed';
+import {inject as service} from '@ember/service';
 import {task} from 'ember-concurrency';
 
 export default Controller.extend({
-    config: injectService(),
-    ghostPaths: injectService(),
-    notifications: injectService(),
-    session: injectService(),
+    config: service(),
+    ghostPaths: service(),
+    notifications: service(),
+    session: service(),
+    settings: service(),
 
+    dirtyAttributes: false,
     newNavItem: null,
-
+    newSecondaryNavItem: null,
     themes: null,
     themeToDelete: null,
+
+    init() {
+        this._super(...arguments);
+        this.set('newNavItem', NavigationItem.create({isNew: true}));
+        this.set('newSecondaryNavItem', NavigationItem.create({isNew: true, isSecondary: true}));
+    },
+
     showDeleteThemeModal: notEmpty('themeToDelete'),
 
     blogUrl: computed('config.blogUrl', function () {
@@ -27,78 +37,19 @@ export default Controller.extend({
         return url.slice(-1) !== '/' ? `${url}/` : url;
     }),
 
-    init() {
-        this._super(...arguments);
-        this.set('newNavItem', NavigationItem.create({isNew: true}));
-    },
-
-    save: task(function* () {
-        let navItems = this.get('model.navigation');
-        let newNavItem = this.get('newNavItem');
-        let notifications = this.get('notifications');
-        let validationPromises = [];
-
-        if (!newNavItem.get('isBlank')) {
-            validationPromises.pushObject(this.send('addNavItem'));
-        }
-
-        navItems.map((item) => {
-            validationPromises.pushObject(item.validate());
-        });
-
-        try {
-            yield RSVP.all(validationPromises);
-            return yield this.get('model').save();
-        } catch (error) {
-            if (error) {
-                notifications.showAPIError(error);
-                throw error;
-            }
-        }
-    }),
-
-    addNewNavItem() {
-        let navItems = this.get('model.navigation');
-        let newNavItem = this.get('newNavItem');
-
-        newNavItem.set('isNew', false);
-        navItems.pushObject(newNavItem);
-        this.set('newNavItem', NavigationItem.create({isNew: true}));
-        $('.gh-blognav-line:last input:first').focus();
-    },
-
-    _deleteTheme() {
-        let theme = this.get('store').peekRecord('theme', this.get('themeToDelete').name);
-
-        if (!theme) {
-            return;
-        }
-
-        return theme.destroyRecord().then(() => {
-            // HACK: this is a private method, we need to unload from the store
-            // here so that uploading another theme with the same "id" doesn't
-            // attempt to update the deleted record
-            theme.unloadRecord();
-        }).catch((error) => {
-            this.get('notifications').showAPIError(error);
-        });
-    },
-
     actions: {
         save() {
-            this.get('save').perform();
+            this.save.perform();
         },
 
-        addNavItem() {
-            let newNavItem = this.get('newNavItem');
-
+        addNavItem(item) {
             // If the url sent through is blank (user never edited the url)
-            if (newNavItem.get('url') === '') {
-                newNavItem.set('url', '/');
+            if (item.get('url') === '') {
+                item.set('url', '/');
             }
 
-            return newNavItem.validate().then(() => {
-                this.addNewNavItem();
+            return item.validate().then(() => {
+                this.addNewNavItem(item);
             });
         },
 
@@ -107,13 +58,21 @@ export default Controller.extend({
                 return;
             }
 
-            let navItems = this.get('model.navigation');
+            let navItems = item.isSecondary ? this.get('settings.secondaryNavigation') : this.get('settings.navigation');
 
             navItems.removeObject(item);
+            this.set('dirtyAttributes', true);
         },
 
-        reorderItems(navItems) {
-            this.set('model.navigation', navItems);
+        updateLabel(label, navItem) {
+            if (!navItem) {
+                return;
+            }
+
+            if (navItem.get('label') !== label) {
+                navItem.set('label', label);
+                this.set('dirtyAttributes', true);
+            }
         },
 
         updateUrl(url, navItem) {
@@ -121,38 +80,75 @@ export default Controller.extend({
                 return;
             }
 
-            navItem.set('url', url);
+            if (navItem.get('url') !== url) {
+                navItem.set('url', url);
+                this.set('dirtyAttributes', true);
+            }
+
+            return url;
+        },
+
+        toggleLeaveSettingsModal(transition) {
+            let leaveTransition = this.leaveSettingsTransition;
+
+            if (!transition && this.showLeaveSettingsModal) {
+                this.set('leaveSettingsTransition', null);
+                this.set('showLeaveSettingsModal', false);
+                return;
+            }
+
+            if (!leaveTransition || transition.targetName === leaveTransition.targetName) {
+                this.set('leaveSettingsTransition', transition);
+
+                // if a save is running, wait for it to finish then transition
+                if (this.save.isRunning) {
+                    return this.save.last.then(() => {
+                        transition.retry();
+                    });
+                }
+
+                // we genuinely have unsaved data, show the modal
+                this.set('showLeaveSettingsModal', true);
+            }
+        },
+
+        leaveSettings() {
+            let transition = this.leaveSettingsTransition;
+            let settings = this.settings;
+
+            if (!transition) {
+                this.notifications.showAlert('Sorry, there was an error in the application. Please let the Ghost team know what happened.', {type: 'error'});
+                return;
+            }
+
+            // roll back changes on settings props
+            settings.rollbackAttributes();
+            this.set('dirtyAttributes', false);
+
+            return transition.retry();
         },
 
         activateTheme(theme) {
-            return theme.activate().then((theme) => {
-                let themeName = theme.get('name');
-
-                if (!isEmpty(theme.get('warnings'))) {
-                    this.set('themeWarnings', theme.get('warnings'));
+            return theme.activate().then((activatedTheme) => {
+                if (!isEmpty(activatedTheme.get('warnings'))) {
+                    this.set('themeWarnings', activatedTheme.get('warnings'));
                     this.set('showThemeWarningsModal', true);
                 }
 
-                if (!isEmpty(theme.get('errors'))) {
-                    this.set('themeErrors', theme.get('errors'));
+                if (!isEmpty(activatedTheme.get('errors'))) {
+                    this.set('themeErrors', activatedTheme.get('errors'));
                     this.set('showThemeWarningsModal', true);
-                }
-
-                if (this.get('themeErrors') || this.get('themeWarnings')) {
-                    let message = `${themeName} activated successfully but some warnings/errors were detected.
-                                   You are still able to use and activate the theme. Here is your report...`;
-                    this.set('message', message);
                 }
             }).catch((error) => {
                 if (isThemeValidationError(error)) {
-                    let errors = error.errors[0].errorDetails;
+                    let errors = error.payload.errors[0].details.errors;
                     let fatalErrors = [];
                     let normalErrors = [];
 
                     // to have a proper grouping of fatal errors and none fatal, we need to check
                     // our errors for the fatal property
                     if (errors.length > 0) {
-                        for (let i = 0; i < errors.length; i++) {
+                        for (let i = 0; i < errors.length; i += 1) {
                             if (errors[i].fatal) {
                                 fatalErrors.push(errors[i]);
                             } else {
@@ -172,9 +168,7 @@ export default Controller.extend({
         },
 
         downloadTheme(theme) {
-            let themeURL = `${this.get('ghostPaths.apiRoot')}/themes/${theme.name}`;
-            let accessToken = this.get('session.data.authenticated.access_token');
-            let downloadURL = `${themeURL}/download/?access_token=${accessToken}`;
+            let downloadURL = `${this.get('ghostPaths.apiRoot')}/themes/${theme.name}/download/`;
             let iframe = $('#iframeDownload');
 
             if (iframe.length === 0) {
@@ -206,6 +200,75 @@ export default Controller.extend({
 
         reset() {
             this.set('newNavItem', NavigationItem.create({isNew: true}));
+            this.set('newSecondaryNavItem', NavigationItem.create({isNew: true, isSecondary: true}));
         }
+    },
+
+    save: task(function* () {
+        let navItems = this.get('settings.navigation');
+        let secondaryNavItems = this.get('settings.secondaryNavigation');
+
+        let notifications = this.notifications;
+        let validationPromises = [];
+
+        if (!this.newNavItem.get('isBlank')) {
+            validationPromises.pushObject(this.send('addNavItem', this.newNavItem));
+        }
+
+        if (!this.newSecondaryNavItem.get('isBlank')) {
+            validationPromises.pushObject(this.send('addNavItem', this.newSecondaryNavItem));
+        }
+
+        navItems.map((item) => {
+            validationPromises.pushObject(item.validate());
+        });
+
+        secondaryNavItems.map((item) => {
+            validationPromises.pushObject(item.validate());
+        });
+
+        try {
+            yield RSVP.all(validationPromises);
+            this.set('dirtyAttributes', false);
+            return yield this.settings.save();
+        } catch (error) {
+            if (error) {
+                notifications.showAPIError(error);
+                throw error;
+            }
+        }
+    }),
+
+    addNewNavItem(item) {
+        let navItems = item.isSecondary ? this.get('settings.secondaryNavigation') : this.get('settings.navigation');
+
+        item.set('isNew', false);
+        navItems.pushObject(item);
+        this.set('dirtyAttributes', true);
+
+        if (item.isSecondary) {
+            this.set('newSecondaryNavItem', NavigationItem.create({isNew: true, isSecondary: true}));
+            $('.gh-blognav-container:last .gh-blognav-line:last input:first').focus();
+        } else {
+            this.set('newNavItem', NavigationItem.create({isNew: true}));
+            $('.gh-blognav-container:first .gh-blognav-line:last input:first').focus();
+        }
+    },
+
+    _deleteTheme() {
+        let theme = this.store.peekRecord('theme', this.themeToDelete.name);
+
+        if (!theme) {
+            return;
+        }
+
+        return theme.destroyRecord().then(() => {
+            // HACK: this is a private method, we need to unload from the store
+            // here so that uploading another theme with the same "id" doesn't
+            // attempt to update the deleted record
+            theme.unloadRecord();
+        }).catch((error) => {
+            this.notifications.showAPIError(error);
+        });
     }
 });

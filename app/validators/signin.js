@@ -1,4 +1,6 @@
 import BaseValidator from './base';
+import validator from 'validator';
+import {isBlank} from '@ember/utils';
 
 export default BaseValidator.create({
     properties: ['identification', 'signin', 'forgotPassword'],
@@ -7,8 +9,8 @@ export default BaseValidator.create({
     identification(model) {
         let id = model.get('identification');
 
-        if (!validator.empty(id) && !validator.isEmail(id)) {
-            model.get('errors').add('identification', this.get('invalidMessage'));
+        if (!isBlank(id) && !validator.isEmail(id)) {
+            model.get('errors').add('identification', this.invalidMessage);
             this.invalidate();
         }
     },
@@ -19,17 +21,17 @@ export default BaseValidator.create({
 
         model.get('errors').clear();
 
-        if (validator.empty(id)) {
+        if (isBlank(id)) {
             model.get('errors').add('identification', 'Please enter an email');
             this.invalidate();
         }
 
-        if (!validator.empty(id) && !validator.isEmail(id)) {
-            model.get('errors').add('identification', this.get('invalidMessage'));
+        if (!isBlank(id) && !validator.isEmail(id)) {
+            model.get('errors').add('identification', this.invalidMessage);
             this.invalidate();
         }
 
-        if (validator.empty(password)) {
+        if (isBlank(password)) {
             model.get('errors').add('password', 'Please enter a password');
             this.invalidate();
         }
@@ -40,8 +42,8 @@ export default BaseValidator.create({
 
         model.get('errors').clear();
 
-        if (validator.empty(id) || !validator.isEmail(id)) {
-            model.get('errors').add('identification', this.get('invalidMessage'));
+        if (isBlank(id) || !validator.isEmail(id)) {
+            model.get('errors').add('identification', this.invalidMessage);
             this.invalidate();
         }
     }

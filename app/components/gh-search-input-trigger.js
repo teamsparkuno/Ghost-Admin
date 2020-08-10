@@ -1,45 +1,59 @@
-import Component from '@ember/component';
-import {invokeAction} from 'ember-invoke-action';
+/* global key */
+import Component from '@glimmer/component';
+import {action} from '@ember/object';
 import {isBlank} from '@ember/utils';
-import {run} from '@ember/runloop';
 
-export default Component.extend({
-    open() {
-        this.get('select.actions').open();
-    },
+export default class GhSearchInputTrigger extends Component {
+    @action
+    registerInput(elem) {
+        this.inputElem = elem;
+    }
 
-    close() {
-        this.get('select.actions').close();
-    },
+    @action
+    captureMousedown(e) {
+        e.stopPropagation();
+    }
 
-    actions: {
-        captureMouseDown(e) {
-            e.stopPropagation();
-        },
+    @action
+    search(event) {
+        let term = event.target.value;
 
-        search(term) {
-            if (isBlank(term) === this.get('select.isOpen')) {
-                run.scheduleOnce('afterRender', this, isBlank(term) ? this.close : this.open);
-            }
+        // open dropdown if not open and term is present
+        // close dropdown if open and term is blank
+        if (isBlank(term) === this.args.select.isOpen) {
+            isBlank(term) ? this.close() : this.open();
 
-            invokeAction(this, 'select.actions.search', term);
-        },
-
-        focusInput() {
-            this.$('input')[0].focus();
-        },
-
-        resetInput() {
-            this.$('input').val('');
-        },
-
-        handleKeydown(e) {
-            let select = this.get('select');
-
-            // TODO: remove keycode check once EPS is updated to 1.0
-            if (!select.isOpen || e.keyCode === 32) {
-                e.stopPropagation();
+            // ensure focus isn't lost when dropdown is closed
+            if (isBlank(term) && this.inputElem) {
+                this.inputElem.focus();
             }
         }
+
+        this.args.select.actions.search(term);
     }
-});
+
+    // hacky workaround to let Escape clear the input if there's text,
+    // but still allow it to close the search modal if there's no text
+    @action
+    handleKeydown(e) {
+        if ((e.key === 'Escape' && e.target.value) || e.key === 'Enter') {
+            this._previousKeyScope = key.getScope();
+            key.setScope('ignore');
+        }
+    }
+
+    @action
+    handleKeyup() {
+        if (key.getScope() === 'ignore') {
+            key.setScope(this._previousKeyScope);
+        }
+    }
+
+    open() {
+        this.args.select.actions.open();
+    }
+
+    close() {
+        this.args.select.actions.close();
+    }
+}

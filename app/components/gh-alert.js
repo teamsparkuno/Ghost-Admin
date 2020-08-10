@@ -1,13 +1,13 @@
 import Component from '@ember/component';
 import {computed} from '@ember/object';
-import {inject as injectService} from '@ember/service';
+import {inject as service} from '@ember/service';
 
 export default Component.extend({
-    tagName: 'article',
-    classNames: ['gh-alert'],
-    classNameBindings: ['typeClass'],
+    notifications: service(),
 
-    notifications: injectService(),
+    classNameBindings: ['typeClass'],
+    classNames: ['gh-alert'],
+    tagName: 'article',
 
     typeClass: computed('message.type', function () {
         let type = this.get('message.type');
@@ -30,7 +30,7 @@ export default Component.extend({
 
     actions: {
         closeNotification() {
-            this.get('notifications').closeNotification(this.get('message'));
+            this.notifications.closeNotification(this.message);
         }
     }
 });

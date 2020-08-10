@@ -7,13 +7,21 @@ import {
 } from 'ghost-admin/services/ajax';
 import {computed} from '@ember/object';
 import {htmlSafe} from '@ember/string';
-import {inject as injectService} from '@ember/service';
-import {invokeAction} from 'ember-invoke-action';
 import {isBlank} from '@ember/utils';
 import {isArray as isEmberArray} from '@ember/array';
 import {run} from '@ember/runloop';
+import {inject as service} from '@ember/service';
+
+const DEFAULTS = {
+    accept: ['text/csv'],
+    extensions: ['csv']
+};
 
 export default Component.extend({
+    ajax: service(),
+    eventBus: service(),
+    notifications: service(),
+
     tagName: 'section',
     classNames: ['gh-image-uploader'],
     classNameBindings: ['dragClass'],
@@ -21,8 +29,8 @@ export default Component.extend({
     labelText: 'Select or drag-and-drop a file',
     url: null,
     paramName: 'file',
-    accept: ['text/csv'],
-    extensions: ['csv'],
+    accept: null,
+    extensions: null,
     validate: null,
 
     file: null,
@@ -32,13 +40,16 @@ export default Component.extend({
     failureMessage: null,
     uploadPercentage: 0,
 
-    ajax: injectService(),
-    eventBus: injectService(),
-    notifications: injectService(),
+    // Allowed actions
+    fileSelected: () => {},
+    uploadStarted: () => {},
+    uploadFinished: () => {},
+    uploadSuccess: () => {},
+    uploadFailed: () => {},
 
     formData: computed('file', function () {
-        let paramName = this.get('paramName');
-        let file = this.get('file');
+        let paramName = this.paramName;
+        let file = this.file;
         let formData = new FormData();
 
         formData.append(paramName, file);
@@ -47,7 +58,7 @@ export default Component.extend({
     }),
 
     progressStyle: computed('uploadPercentage', function () {
-        let percentage = this.get('uploadPercentage');
+        let percentage = this.uploadPercentage;
         let width = '';
 
         if (percentage > 0) {
@@ -63,34 +74,77 @@ export default Component.extend({
     // process can be triggered externally
     init() {
         this._super(...arguments);
-        let listenTo = this.get('listenTo');
+        let listenTo = this.listenTo;
+
+        this.accept = this.accept || DEFAULTS.accept;
+        this.extensions = this.extensions || DEFAULTS.extensions;
+
+        this._uploadEventHandler = function (file) {
+            if (file) {
+                this.set('file', file);
+            }
+            this.send('upload');
+        };
 
         if (listenTo) {
-            this.get('eventBus').subscribe(`${listenTo}:upload`, this, function (file) {
-                if (file) {
-                    this.set('file', file);
-                }
-                this.send('upload');
-            });
+            this.eventBus.subscribe(`${listenTo}:upload`, this, this._uploadEventHandler);
         }
     },
 
     didReceiveAttrs() {
         this._super(...arguments);
-        let accept = this.get('accept');
-        let extensions = this.get('extensions');
+        let accept = this.accept;
+        let extensions = this.extensions;
 
         this._accept = (!isBlank(accept) && !isEmberArray(accept)) ? accept.split(',') : accept;
         this._extensions = (!isBlank(extensions) && !isEmberArray(extensions)) ? extensions.split(',') : extensions;
     },
 
     willDestroyElement() {
-        let listenTo = this.get('listenTo');
+        let listenTo = this.listenTo;
 
         this._super(...arguments);
 
         if (listenTo) {
-            this.get('eventBus').unsubscribe(`${listenTo}:upload`);
+            this.eventBus.unsubscribe(`${listenTo}:upload`, this, this._uploadEventHandler);
+        }
+    },
+
+    actions: {
+        fileSelected(fileList, resetInput) {
+            let [file] = Array.from(fileList);
+            let validationResult = this._validate(file);
+
+            this.set('file', file);
+            this.fileSelected(file);
+
+            if (validationResult === true) {
+                run.schedule('actions', this, function () {
+                    this.generateRequest();
+
+                    if (resetInput) {
+                        resetInput();
+                    }
+                });
+            } else {
+                this._uploadFailed(validationResult);
+
+                if (resetInput) {
+                    resetInput();
+                }
+            }
+        },
+
+        upload() {
+            if (this.file) {
+                this.generateRequest();
+            }
+        },
+
+        reset() {
+            this.set('file', null);
+            this.set('uploadPercentage', 0);
+            this.set('failureMessage', null);
         }
     },
 
@@ -101,8 +155,10 @@ export default Component.extend({
 
         // this is needed to work around inconsistencies with dropping files
         // from Chrome's downloads bar
-        let eA = event.dataTransfer.effectAllowed;
-        event.dataTransfer.dropEffect = (eA === 'move' || eA === 'linkMove') ? 'move' : 'copy';
+        if (navigator.userAgent.indexOf('Chrome') > -1) {
+            let eA = event.dataTransfer.effectAllowed;
+            event.dataTransfer.dropEffect = (eA === 'move' || eA === 'linkMove') ? 'move' : 'copy';
+        }
 
         event.stopPropagation();
         event.preventDefault();
@@ -124,11 +180,11 @@ export default Component.extend({
     },
 
     generateRequest() {
-        let ajax = this.get('ajax');
-        let formData = this.get('formData');
-        let url = this.get('url');
+        let ajax = this.ajax;
+        let formData = this.formData;
+        let url = this.url;
 
-        invokeAction(this, 'uploadStarted');
+        this.uploadStarted();
 
         ajax.post(url, {
             data: formData,
@@ -149,7 +205,7 @@ export default Component.extend({
         }).catch((error) => {
             this._uploadFailed(error);
         }).finally(() => {
-            invokeAction(this, 'uploadFinished');
+            this.uploadFinished();
         });
     },
 
@@ -163,7 +219,7 @@ export default Component.extend({
     },
 
     _uploadSuccess(response) {
-        invokeAction(this, 'uploadSuccess', response);
+        this.uploadSuccess(response);
         this.send('reset');
     },
 
@@ -171,26 +227,26 @@ export default Component.extend({
         let message;
 
         if (isVersionMismatchError(error)) {
-            this.get('notifications').showAPIError(error);
+            this.notifications.showAPIError(error);
         }
 
         if (isUnsupportedMediaTypeError(error)) {
             message = 'The file type you uploaded is not supported.';
         } else if (isRequestEntityTooLargeError(error)) {
             message = 'The file you uploaded was larger than the maximum file size your server allows.';
-        } else if (error.errors && !isBlank(error.errors[0].message)) {
-            message = htmlSafe(error.errors[0].message);
+        } else if (error.payload && error.payload.errors && !isBlank(error.payload.errors[0].message)) {
+            message = htmlSafe(error.payload.errors[0].message);
         } else {
             message = 'Something went wrong :(';
         }
 
         this.set('failureMessage', message);
-        invokeAction(this, 'uploadFailed', error);
+        this.uploadFailed(error);
     },
 
     _validate(file) {
-        if (this.get('validate')) {
-            return invokeAction(this, 'validate', file);
+        if (this.validate) {
+            return this.validate(file);
         } else {
             return this._defaultValidator(file);
         }
@@ -205,38 +261,5 @@ export default Component.extend({
         }
 
         return true;
-    },
-
-    actions: {
-        fileSelected(fileList) {
-            // can't use array destructuring here as FileList is not a strict
-            // array and fails in Safari
-            // eslint-disable-next-line ember-suave/prefer-destructuring
-            let file = fileList[0];
-            let validationResult = this._validate(file);
-
-            this.set('file', file);
-            invokeAction(this, 'fileSelected', file);
-
-            if (validationResult === true) {
-                run.schedule('actions', this, function () {
-                    this.generateRequest();
-                });
-            } else {
-                this._uploadFailed(validationResult);
-            }
-        },
-
-        upload() {
-            if (this.get('file')) {
-                this.generateRequest();
-            }
-        },
-
-        reset() {
-            this.set('file', null);
-            this.set('uploadPercentage', 0);
-            this.set('failureMessage', null);
-        }
     }
 });

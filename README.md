@@ -1,9 +1,12 @@
 # Ghost-Admin
 
-[![Build Status](https://travis-ci.org/TryGhost/Ghost-Admin.svg?branch=master)](https://travis-ci.org/TryGhost/Ghost-Admin) 
-[![Coverage Status](https://coveralls.io/repos/github/TryGhost/Ghost-Admin/badge.svg)](https://coveralls.io/github/TryGhost/Ghost-Admin)
+![](https://github.com/TryGhost/Ghost-Admin/workflows/Test%20Suite/badge.svg?branch=master)
 
-This is the home of Ember.js based admin client that ships with [Ghost](https://github.com/tryghost/ghost). For now, refer to that repository for [install and development instructions](https://github.com/TryGhost/Ghost#quick-start-install).
+This is the home of Ember.js based admin client that ships with [Ghost](https://github.com/tryghost/ghost).
+
+**Do you want to set up a Ghost blog?** Check the [getting started guide](https://ghost.org/docs/concepts/introduction/)
+
+**Do you want to modify or contribute to Ghost-Admin?** Please read how to [install from source](https://ghost.org/docs/install/source/) and swing by our [forum](https://forum.ghost.org) if you need any help 😄
 
 ## Have a bug or issue?
 
@@ -11,4 +14,4 @@ Bugs and issues (even if they only affect the admin client) should be opened on 
 
 # Copyright & License
 
-Copyright (c) 2013-2017 Ghost Foundation - Released under the [MIT license](LICENSE).
+Copyright (c) 2013-2020 Ghost Foundation - Released under the [MIT license](LICENSE). Ghost and the Ghost Logo are trademarks of Ghost Foundation Ltd. Please see our [trademark policy](https://ghost.org/trademark/) for info on acceptable usage.

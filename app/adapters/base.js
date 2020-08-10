@@ -1,16 +1,14 @@
 import AjaxServiceSupport from 'ember-ajax/mixins/ajax-support';
 import DataAdapterMixin from 'ember-simple-auth/mixins/data-adapter-mixin';
-import RESTAdapter from 'ember-data/adapters/rest';
+import RESTAdapter from '@ember-data/adapter/rest';
 import ghostPaths from 'ghost-admin/utils/ghost-paths';
-import {inject as injectService} from '@ember/service';
+import {inject as service} from '@ember/service';
 
 export default RESTAdapter.extend(DataAdapterMixin, AjaxServiceSupport, {
-    authorizer: 'authorizer:oauth2',
-
     host: window.location.origin,
     namespace: ghostPaths().apiRoot.slice(1),
 
-    session: injectService(),
+    session: service(),
 
     shouldBackgroundReloadRecord() {
         return false;
@@ -30,11 +28,12 @@ export default RESTAdapter.extend(DataAdapterMixin, AjaxServiceSupport, {
     buildURL() {
         // Ensure trailing slashes
         let url = this._super(...arguments);
+        let parsedUrl = new URL(url);
 
-        if (url.slice(-1) !== '/') {
-            url += '/';
+        if (!parsedUrl.pathname.endsWith('/')) {
+            parsedUrl.pathname += '/';
         }
 
-        return url;
+        return parsedUrl.toString();
     }
 });

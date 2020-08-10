@@ -1,21 +1,21 @@
 import ModalComponent from 'ghost-admin/components/modal-base';
 import cajaSanitizers from 'ghost-admin/utils/caja-sanitizers';
 import {computed} from '@ember/object';
-import {inject as injectService} from '@ember/service';
 import {isEmpty} from '@ember/utils';
+import {inject as service} from '@ember/service';
 import {task} from 'ember-concurrency';
 
 export default ModalComponent.extend({
+    config: service(),
+    notifications: service(),
+
     model: null,
 
     url: '',
     newUrl: '',
     _isUploading: false,
 
-    config: injectService(),
-    notifications: injectService(),
-
-    image: computed('model.model', 'model.imageProperty', {
+    image: computed('model.{model,imageProperty}', {
         get() {
             let imageProperty = this.get('model.imageProperty');
 
@@ -31,9 +31,29 @@ export default ModalComponent.extend({
     }),
 
     didReceiveAttrs() {
-        let image = this.get('image');
+        let image = this.image;
         this.set('url', image);
         this.set('newUrl', image);
+    },
+
+    actions: {
+        fileUploaded(url) {
+            this.set('url', url);
+            this.set('newUrl', url);
+        },
+
+        removeImage() {
+            this.set('url', '');
+            this.set('newUrl', '');
+        },
+
+        confirm() {
+            this.uploadImage.perform();
+        },
+
+        isUploading() {
+            this.toggleProperty('_isUploading');
+        }
     },
 
     // TODO: should validation be handled in the gh-image-uploader component?
@@ -50,9 +70,9 @@ export default ModalComponent.extend({
 
     _setErrorState(state) {
         if (state) {
-            this.$('.url').addClass('error');
+            this.element.querySelector('.url').classList.add('error');
         } else {
-            this.$('.url').removeClass('error');
+            this.element.querySelector('.url').classList.remove('error');
         }
     },
 
@@ -68,9 +88,9 @@ export default ModalComponent.extend({
 
     uploadImage: task(function* () {
         let model = this.get('model.model');
-        let newUrl = this.get('newUrl');
+        let newUrl = this.newUrl;
         let result = this._validateUrl(newUrl);
-        let notifications = this.get('notifications');
+        let notifications = this.notifications;
 
         if (result === true) {
             this.set('image', newUrl);
@@ -83,25 +103,5 @@ export default ModalComponent.extend({
                 this.send('closeModal');
             }
         }
-    }).drop(),
-
-    actions: {
-        fileUploaded(url) {
-            this.set('url', url);
-            this.set('newUrl', url);
-        },
-
-        removeImage() {
-            this.set('url', '');
-            this.set('newUrl', '');
-        },
-
-        confirm() {
-            this.get('uploadImage').perform();
-        },
-
-        isUploading() {
-            this.toggleProperty('_isUploading');
-        }
-    }
+    }).drop()
 });

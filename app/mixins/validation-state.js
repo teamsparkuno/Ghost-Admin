@@ -1,7 +1,9 @@
 import Mixin from '@ember/object/mixin';
 import {A as emberA} from '@ember/array';
 import {isEmpty} from '@ember/utils';
+// eslint-disable-next-line ghost/ember/no-observers
 import {observer} from '@ember/object';
+import {on} from '@ember/object/evented';
 import {run} from '@ember/runloop';
 
 export default Mixin.create({
@@ -13,9 +15,9 @@ export default Mixin.create({
     hasError: false,
 
     setHasError() {
-        let property = this.get('property');
-        let errors = this.get('errors');
-        let hasValidated = this.get('hasValidated');
+        let property = this.property;
+        let errors = this.errors;
+        let hasValidated = this.hasValidated;
 
         // if we aren't looking at a specific property we always want an error class
         if (!property && errors && !errors.get('isEmpty')) {
@@ -37,9 +39,9 @@ export default Mixin.create({
         this.set('hasError', false);
     },
 
-    hasErrorObserver: observer('errors.[]', 'property', 'hasValidated.[]', function () {
+    // eslint-disable-next-line ghost/ember/no-observers
+    hasErrorObserver: on('init', observer('errors.[]', 'property', 'hasValidated.[]', function () {
         run.once(this, 'setHasError');
-        // this.setHasError();
-    }).on('init')
+    }))
 
 });

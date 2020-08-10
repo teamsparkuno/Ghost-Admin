@@ -3,19 +3,13 @@ import {Response} from 'ember-cli-mirage';
 import {isBlank} from '@ember/utils';
 
 export default function mockAuthentication(server) {
-    server.post('/authentication/token', function () {
+    server.post('/session', function () {
         // Password sign-in
-        return {
-            access_token: 'MirageAccessToken',
-            expires_in: 172800,
-            refresh_token: 'MirageRefreshToken',
-            token_type: 'Bearer'
-        };
+        return new Response(201);
     });
 
     server.post('/authentication/passwordreset', function (schema, request) {
         let {passwordreset} = JSON.parse(request.requestBody);
-        // eslint-disable-next-line ember-suave/prefer-destructuring
         let email = passwordreset[0].email;
 
         if (email === 'unknown@example.com') {
@@ -23,7 +17,7 @@ export default function mockAuthentication(server) {
                 errors: [
                     {
                         message: 'There is no user with that email address.',
-                        errorType: 'NotFoundError'
+                        type: 'NotFoundError'
                     }
                 ]
             });
@@ -39,14 +33,11 @@ export default function mockAuthentication(server) {
     server.get('/authentication/invitation/', function (schema, request) {
         let {email} = request.queryParams;
         let invite = schema.invites.findBy({email});
-        let user = schema.users.find(invite.createdBy);
         let valid = !!invite;
-        let invitedBy = user && user.name;
 
         return {
             invitation: [{
-                valid,
-                invitedBy
+                valid
             }]
         };
     });
@@ -54,7 +45,7 @@ export default function mockAuthentication(server) {
     /* Setup ---------------------------------------------------------------- */
 
     server.post('/authentication/setup', function ({roles, users}, request) {
-        let [attrs] = JSON.parse(request.requestBody).setup;
+        let attrs = JSON.parse(request.requestBody).setup;
         let role = roles.findBy({name: 'Owner'});
 
         // create owner role unless already exists

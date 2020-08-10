@@ -1,24 +1,15 @@
-import Router from '@ember/routing/router';
-import config from './config/environment';
-import documentTitle from 'ghost-admin/utils/document-title';
+import EmberRouter from '@ember/routing/router';
+import config from 'ghost-admin/config/environment';
 import ghostPaths from 'ghost-admin/utils/ghost-paths';
-import {inject as injectService} from '@ember/service';
-import {on} from '@ember/object/evented';
 
-const GhostRouter = Router.extend({
+const Router = EmberRouter.extend({
     location: config.locationType, // use HTML5 History API instead of hash-tag based URLs
-    rootURL: ghostPaths().adminRoot, // admin interface lives under sub-directory /ghost
-
-    notifications: injectService(),
-
-    displayDelayedNotifications: on('didTransition', function () {
-        this.get('notifications').displayDelayed();
-    })
+    rootURL: ghostPaths().adminRoot // admin interface lives under sub-directory /ghost
 });
 
-documentTitle();
+Router.map(function () {
+    this.route('home', {path: '/'});
 
-GhostRouter.map(function () {
     this.route('setup', function () {
         this.route('one');
         this.route('two');
@@ -29,41 +20,54 @@ GhostRouter.map(function () {
     this.route('signout');
     this.route('signup', {path: '/signup/:token'});
     this.route('reset', {path: '/reset/:token'});
-    this.route('about', {path: '/about'});
+    this.route('about');
+    this.route('site');
 
-    this.route('posts', {path: '/'}, function() {});
-
-    this.route('editor', function () {
-        this.route('new', {path: ''});
-        this.route('edit', {path: ':post_id'});
+    this.route('billing', function () {
+        this.route('billing-sub', {path: '/*sub'});
     });
 
-    this.route('team', {path: '/team'}, function () {
+    this.route('posts');
+    this.route('pages');
+
+    this.route('editor', function () {
+        this.route('new', {path: ':type'});
+        this.route('edit', {path: ':type/:post_id'});
+    });
+
+    this.route('staff', function () {
         this.route('user', {path: ':user_slug'});
     });
 
+    this.route('tags');
+    this.route('tag.new', {path: '/tags/new'});
+    this.route('tag', {path: '/tags/:tag_slug'});
+
     this.route('settings.general', {path: '/settings/general'});
-    this.route('settings.tags', {path: '/settings/tags'}, function () {
-        this.route('tag', {path: ':tag_slug'});
-        this.route('new');
-    });
     this.route('settings.labs', {path: '/settings/labs'});
     this.route('settings.code-injection', {path: '/settings/code-injection'});
     this.route('settings.design', {path: '/settings/design'}, function () {
         this.route('uploadtheme');
     });
-    this.route('settings.apps', {path: '/settings/apps'}, function () {
-        this.route('slack', {path: 'slack'});
-        this.route('amp', {path: 'amp'});
-        this.route('unsplash', {path: 'unsplash'});
-    });
-
-    this.route('subscribers', function () {
+    this.route('settings.integrations', {path: '/settings/integrations'}, function () {
         this.route('new');
+    });
+    this.route('settings.integration', {path: '/settings/integrations/:integration_id'}, function () {
+        this.route('webhooks.new', {path: 'webhooks/new'});
+        this.route('webhooks.edit', {path: 'webhooks/:webhook_id'});
+    });
+    this.route('settings.integrations.slack', {path: '/settings/integrations/slack'});
+    this.route('settings.integrations.amp', {path: '/settings/integrations/amp'});
+    this.route('settings.integrations.unsplash', {path: '/settings/integrations/unsplash'});
+    this.route('settings.integrations.zapier', {path: '/settings/integrations/zapier'});
+
+    this.route('members', function () {
         this.route('import');
     });
+    this.route('member.new', {path: '/members/new'});
+    this.route('member', {path: '/members/:member_id'});
 
     this.route('error404', {path: '/*path'});
 });
 
-export default GhostRouter;
+export default Router;

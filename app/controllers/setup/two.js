@@ -1,21 +1,21 @@
-/* eslint-disable camelcase */
-import Controller from '@ember/controller';
+/* eslint-disable camelcase, ghost/ember/alias-model-in-controller */
+import Controller, {inject as controller} from '@ember/controller';
 import RSVP from 'rsvp';
 import ValidationEngine from 'ghost-admin/mixins/validation-engine';
-import {inject as injectController} from '@ember/controller';
-import {inject as injectService} from '@ember/service';
+import {get} from '@ember/object';
 import {isInvalidError} from 'ember-ajax/errors';
 import {isVersionMismatchError} from 'ghost-admin/services/ajax';
+import {inject as service} from '@ember/service';
 import {task} from 'ember-concurrency';
 
 export default Controller.extend(ValidationEngine, {
-    ajax: injectService(),
-    application: injectController(),
-    config: injectService(),
-    ghostPaths: injectService(),
-    notifications: injectService(),
-    session: injectService(),
-    settings: injectService(),
+    application: controller(),
+    ajax: service(),
+    config: service(),
+    ghostPaths: service(),
+    notifications: service(),
+    session: service(),
+    settings: service(),
 
     // ValidationEngine settings
     validationType: 'setup',
@@ -28,6 +28,23 @@ export default Controller.extend(ValidationEngine, {
     name: null,
     password: null,
 
+    actions: {
+        setup() {
+            this.setup.perform();
+        },
+
+        preValidate(model) {
+            // Only triggers validation if a value has been entered, preventing empty errors on focusOut
+            if (this.get(model)) {
+                return this.validate({property: model});
+            }
+        },
+
+        setImage(image) {
+            this.set('profileImage', image);
+        }
+    },
+
     setup: task(function* () {
         return yield this._passwordSetup();
     }),
@@ -37,27 +54,26 @@ export default Controller.extend(ValidationEngine, {
         this.set('session.skipAuthSuccessHandler', true);
 
         try {
-            let authResult = yield this.get('session')
+            let authResult = yield this.session
                 .authenticate(authStrategy, ...authentication);
 
-            this.get('errors').remove('session');
+            this.errors.remove('session');
 
             return authResult;
-
         } catch (error) {
-            if (error && error.errors) {
+            if (error && error.payload && error.payload.errors) {
                 if (isVersionMismatchError(error)) {
-                    return this.get('notifications').showAPIError(error);
+                    return this.notifications.showAPIError(error);
                 }
 
-                error.errors.forEach((err) => {
+                error.payload.errors.forEach((err) => {
                     err.message = err.message.htmlSafe();
                 });
 
-                this.set('flowErrors', error.errors[0].message.string);
+                this.set('flowErrors', error.payload.errors[0].message.string);
             } else {
                 // Connection errors don't return proper status message, only req.body
-                this.get('notifications').showAlert('There was a problem on the server.', {type: 'error', key: 'session.authenticate.failed'});
+                this.notifications.showAlert('There was a problem on the server.', {type: 'error', key: 'session.authenticate.failed'});
             }
         }
     }),
@@ -65,26 +81,28 @@ export default Controller.extend(ValidationEngine, {
     /**
      * Uploads the given data image, then sends the changed user image property to the server
      * @param  {Object} user User object, returned from the 'setup' api call
-     * @return {Ember.RSVP.Promise} A promise that takes care of both calls
+     * @return {RSVP.Promise} A promise that takes care of both calls
      */
     _sendImage(user) {
         let formData = new FormData();
-        let imageFile = this.get('profileImage');
-        let uploadUrl = this.get('ghostPaths.url').api('uploads');
+        let imageFile = this.profileImage;
+        let uploadUrl = this.get('ghostPaths.url').api('images', 'upload');
 
-        formData.append('uploadimage', imageFile, imageFile.name);
+        formData.append('file', imageFile, imageFile.name);
+        formData.append('purpose', 'profile_image');
 
-        return this.get('ajax').post(uploadUrl, {
+        return this.ajax.post(uploadUrl, {
             data: formData,
             processData: false,
             contentType: false,
             dataType: 'text'
         }).then((response) => {
-            let imageUrl = JSON.parse(response);
+            let [image] = get(JSON.parse(response), 'images');
+            let imageUrl = image.url;
             let usersUrl = this.get('ghostPaths.url').api('users', user.id.toString());
             user.profile_image = imageUrl;
 
-            return this.get('ajax').put(usersUrl, {
+            return this.ajax.put(usersUrl, {
                 data: {
                     users: [user]
                 }
@@ -95,17 +113,17 @@ export default Controller.extend(ValidationEngine, {
     _passwordSetup() {
         let setupProperties = ['blogTitle', 'name', 'email', 'password'];
         let data = this.getProperties(setupProperties);
-        let config = this.get('config');
-        let method = this.get('blogCreated') ? 'put' : 'post';
+        let config = this.config;
+        let method = this.blogCreated ? 'put' : 'post';
 
         this.set('flowErrors', '');
 
-        this.get('hasValidated').addObjects(setupProperties);
+        this.hasValidated.addObjects(setupProperties);
 
         return this.validate().then(() => {
             let authUrl = this.get('ghostPaths.url').api('authentication', 'setup');
 
-            return this.get('ajax')[method](authUrl, {
+            return this.ajax[method](authUrl, {
                 data: {
                     setup: [{
                         name: data.name,
@@ -125,7 +143,7 @@ export default Controller.extend(ValidationEngine, {
                 // Don't call the success handler, otherwise we will be redirected to admin
                 this.set('session.skipAuthSuccessHandler', true);
 
-                return this.get('session').authenticate('authenticator:oauth2', this.get('email'), this.get('password')).then(() => {
+                return this.session.authenticate('authenticator:cookie', data.email, data.password).then(() => {
                     this.set('blogCreated', true);
                     return this._afterAuthentication(result);
                 }).catch((error) => {
@@ -143,59 +161,38 @@ export default Controller.extend(ValidationEngine, {
 
     _handleSaveError(resp) {
         if (isInvalidError(resp)) {
-            this.set('flowErrors', resp.errors[0].message);
+            let [error] = resp.payload.errors;
+            this.set('flowErrors', [error.message, error.context].join(' '));
         } else {
-            this.get('notifications').showAPIError(resp, {key: 'setup.blog-details'});
+            this.notifications.showAPIError(resp, {key: 'setup.blog-details'});
         }
     },
 
     _handleAuthenticationError(error) {
-        if (error && error.errors) {
-            this.set('flowErrors', error.errors[0].message);
+        if (error && error.payload && error.payload.errors) {
+            let [apiError] = error.payload.errors;
+            this.set('flowErrors', [apiError.message, apiError.context].join(' '));
         } else {
             // Connection errors don't return proper status message, only req.body
-            this.get('notifications').showAlert('There was a problem on the server.', {type: 'error', key: 'setup.authenticate.failed'});
+            this.notifications.showAlert('There was a problem on the server.', {type: 'error', key: 'setup.authenticate.failed'});
         }
     },
 
     _afterAuthentication(result) {
-        let promises = [];
+        // fetch settings and private config for synchronous access before transitioning
+        let fetchSettingsAndConfig = RSVP.all([
+            this.settings.fetch()
+        ]);
 
-        promises.pushObject(this.get('settings').fetch());
-        promises.pushObject(this.get('config').fetchPrivate());
-
-        if (this.get('profileImage')) {
+        if (this.profileImage) {
             return this._sendImage(result.users[0])
-                .then(() => {
-                    // fetch settings and private config for synchronous access before transitioning
-                    return RSVP.all(promises).then(() => {
-                        return this.transitionToRoute('setup.three');
-                    });
-                }).catch((resp) => {
-                    this.get('notifications').showAPIError(resp, {key: 'setup.blog-details'});
+                .then(() => (fetchSettingsAndConfig))
+                .then(() => (this.transitionToRoute('setup.three')))
+                .catch((resp) => {
+                    this.notifications.showAPIError(resp, {key: 'setup.blog-details'});
                 });
         } else {
-            // fetch settings and private config for synchronous access before transitioning
-            return RSVP.all(promises).then(() => {
-                return this.transitionToRoute('setup.three');
-            });
-        }
-    },
-
-    actions: {
-        setup() {
-            this.get('setup').perform();
-        },
-
-        preValidate(model) {
-            // Only triggers validation if a value has been entered, preventing empty errors on focusOut
-            if (this.get(model)) {
-                return this.validate({property: model});
-            }
-        },
-
-        setImage(image) {
-            this.set('profileImage', image);
+            return fetchSettingsAndConfig.then(() => this.transitionToRoute('setup.three'));
         }
     }
 });

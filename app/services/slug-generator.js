@@ -1,12 +1,11 @@
 import RSVP from 'rsvp';
-import Service from '@ember/service';
-import {inject as injectService} from '@ember/service';
+import Service, {inject as service} from '@ember/service';
 
 const {resolve} = RSVP;
 
 export default Service.extend({
-    ghostPaths: injectService(),
-    ajax: injectService(),
+    ghostPaths: service(),
+    ajax: service(),
 
     generateSlug(slugType, textToSlugify) {
         let url;
@@ -17,7 +16,7 @@ export default Service.extend({
 
         url = this.get('ghostPaths.url').api('slugs', slugType, encodeURIComponent(textToSlugify));
 
-        return this.get('ajax').request(url).then((response) => {
+        return this.ajax.request(url).then((response) => {
             let [firstSlug] = response.slugs;
             let {slug} = firstSlug;
 

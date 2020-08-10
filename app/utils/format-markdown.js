@@ -1,14 +1,13 @@
-/* global html_sanitize */
-import cajaSanitizers from './caja-sanitizers';
-import markdownit from 'npm:markdown-it';
-import markdownitFootnote from 'npm:markdown-it-footnote';
-import markdownitLazyHeaders from 'npm:markdown-it-lazy-headers';
-import markdownitMark from 'npm:markdown-it-mark';
+import markdownit from 'markdown-it';
+import markdownitFootnote from 'markdown-it-footnote';
+import markdownitLazyHeaders from 'markdown-it-lazy-headers';
+import markdownitMark from 'markdown-it-mark';
+import {sanitizeHtml} from 'koenig-editor/helpers/sanitize-html';
 
 let slugify = function slugify(inputString, usedHeaders) {
     let slug = inputString.replace(/[^\w]/g, '').toLowerCase();
     if (usedHeaders[slug]) {
-        usedHeaders[slug]++;
+        usedHeaders[slug] += 1;
         slug += usedHeaders[slug];
     }
     return slug;
@@ -40,7 +39,6 @@ let markdownitNamedHeaders = function markdownitNamedHeaders(md) {
     };
 };
 
-// eslint-disable-next-line new-cap
 let md = markdownit({
     html: true,
     breaks: true,
@@ -51,6 +49,11 @@ let md = markdownit({
     .use(markdownitMark)
     .use(markdownitNamedHeaders);
 
+// configure linkify-it
+md.linkify.set({
+    fuzzyLink: false
+});
+
 export default function formatMarkdown(_markdown, replaceJS = true) {
     let markdown = _markdown || '';
     let escapedhtml = '';
@@ -58,16 +61,5 @@ export default function formatMarkdown(_markdown, replaceJS = true) {
     // convert markdown to HTML
     escapedhtml = md.render(markdown);
 
-    // replace script and iFrame
-    if (replaceJS) {
-        escapedhtml = escapedhtml.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi,
-            '<pre class="js-embed-placeholder">Embedded JavaScript</pre>');
-        escapedhtml = escapedhtml.replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi,
-            '<pre class="iframe-embed-placeholder">Embedded iFrame</pre>');
-    }
-
-    // sanitize html
-    escapedhtml = html_sanitize(escapedhtml, cajaSanitizers.url, cajaSanitizers.id);
-
-    return escapedhtml;
+    return sanitizeHtml(escapedhtml, {replaceJS});
 }

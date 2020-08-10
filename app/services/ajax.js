@@ -1,44 +1,44 @@
 import AjaxService from 'ember-ajax/services/ajax';
 import config from 'ghost-admin/config/environment';
 import {AjaxError, isAjaxError} from 'ember-ajax/errors';
-import {computed} from '@ember/object';
 import {get} from '@ember/object';
-import {inject as injectService} from '@ember/service';
 import {isArray as isEmberArray} from '@ember/array';
 import {isNone} from '@ember/utils';
+import {inject as service} from '@ember/service';
 
-const JSONContentType = 'application/json';
+const JSON_CONTENT_TYPE = 'application/json';
+const GHOST_REQUEST = /\/ghost\/api\//;
 
 function isJSONContentType(header) {
     if (!header || isNone(header)) {
         return false;
     }
-    return header.indexOf(JSONContentType) === 0;
+    return header.indexOf(JSON_CONTENT_TYPE) === 0;
 }
 
 /* Version mismatch error */
 
-export function VersionMismatchError(errors) {
-    AjaxError.call(this, errors, 'API server is running a newer version of Ghost, please upgrade.');
+export class VersionMismatchError extends AjaxError {
+    constructor(payload) {
+        super(payload, 'API server is running a newer version of Ghost, please upgrade.');
+    }
 }
-
-VersionMismatchError.prototype = Object.create(AjaxError.prototype);
 
 export function isVersionMismatchError(errorOrStatus, payload) {
     if (isAjaxError(errorOrStatus)) {
         return errorOrStatus instanceof VersionMismatchError;
     } else {
-        return get(payload || {}, 'errors.firstObject.errorType') === 'VersionMismatchError';
+        return get(payload || {}, 'errors.firstObject.type') === 'VersionMismatchError';
     }
 }
 
-/* Request entity too large error */
+/* Server unreachable error */
 
-export function ServerUnreachableError(errors) {
-    AjaxError.call(this, errors, 'Server was unreachable');
+export class ServerUnreachableError extends AjaxError {
+    constructor(payload) {
+        super(payload, 'Server was unreachable');
+    }
 }
-
-ServerUnreachableError.prototype = Object.create(AjaxError.prototype);
 
 export function isServerUnreachableError(error) {
     if (isAjaxError(error)) {
@@ -48,11 +48,13 @@ export function isServerUnreachableError(error) {
     }
 }
 
-export function RequestEntityTooLargeError(errors) {
-    AjaxError.call(this, errors, 'Request is larger than the maximum file size the server allows');
-}
+/* Request entity too large error */
 
-RequestEntityTooLargeError.prototype = Object.create(AjaxError.prototype);
+export class RequestEntityTooLargeError extends AjaxError {
+    constructor(payload) {
+        super(payload, 'Request is larger than the maximum file size the server allows');
+    }
+}
 
 export function isRequestEntityTooLargeError(errorOrStatus) {
     if (isAjaxError(errorOrStatus)) {
@@ -64,11 +66,11 @@ export function isRequestEntityTooLargeError(errorOrStatus) {
 
 /* Unsupported media type error */
 
-export function UnsupportedMediaTypeError(errors) {
-    AjaxError.call(this, errors, 'Request contains an unknown or unsupported file type.');
+export class UnsupportedMediaTypeError extends AjaxError {
+    constructor(payload) {
+        super(payload, 'Request contains an unknown or unsupported file type.');
+    }
 }
-
-UnsupportedMediaTypeError.prototype = Object.create(AjaxError.prototype);
 
 export function isUnsupportedMediaTypeError(errorOrStatus) {
     if (isAjaxError(errorOrStatus)) {
@@ -80,11 +82,11 @@ export function isUnsupportedMediaTypeError(errorOrStatus) {
 
 /* Maintenance error */
 
-export function MaintenanceError(errors) {
-    AjaxError.call(this, errors, 'Ghost is currently undergoing maintenance, please wait a moment then retry.');
+export class MaintenanceError extends AjaxError {
+    constructor(payload) {
+        super(payload, 'Ghost is currently undergoing maintenance, please wait a moment then retry.');
+    }
 }
-
-MaintenanceError.prototype = Object.create(AjaxError.prototype);
 
 export function isMaintenanceError(errorOrStatus) {
     if (isAjaxError(errorOrStatus)) {
@@ -96,98 +98,115 @@ export function isMaintenanceError(errorOrStatus) {
 
 /* Theme validation error */
 
-export function ThemeValidationError(errors) {
-    AjaxError.call(this, errors, 'Theme is not compatible or contains errors.');
+export class ThemeValidationError extends AjaxError {
+    constructor(payload) {
+        super(payload, 'Theme is not compatible or contains errors.');
+    }
 }
-
-ThemeValidationError.prototype = Object.create(AjaxError.prototype);
 
 export function isThemeValidationError(errorOrStatus, payload) {
     if (isAjaxError(errorOrStatus)) {
         return errorOrStatus instanceof ThemeValidationError;
     } else {
-        return get(payload || {}, 'errors.firstObject.errorType') === 'ThemeValidationError';
+        return get(payload || {}, 'errors.firstObject.type') === 'ThemeValidationError';
+    }
+}
+
+/* Host limit reached/exceeded error */
+
+export class HostLimitError extends AjaxError {
+    constructor(payload) {
+        super(payload, 'A hosting plan limit was reached or exceeded.');
+    }
+}
+
+export function isHostLimitError(errorOrStatus, payload) {
+    if (isAjaxError(errorOrStatus)) {
+        return errorOrStatus instanceof HostLimitError;
+    } else {
+        return get(payload || {}, 'errors.firstObject.type') === 'HostLimitError';
+    }
+}
+
+export class EmailError extends AjaxError {
+    constructor(payload) {
+        super(payload, 'Please verify your email settings');
+    }
+}
+
+export function isEmailError(errorOrStatus, payload) {
+    if (isAjaxError(errorOrStatus)) {
+        return errorOrStatus instanceof EmailError;
+    } else {
+        return get(payload || {}, 'errors.firstObject.type') === 'EmailError';
     }
 }
 
 /* end: custom error types */
 
 let ajaxService = AjaxService.extend({
-    session: injectService(),
+    session: service(),
 
-    headers: computed('session.isAuthenticated', function () {
-        let session = this.get('session');
-        let headers = {};
+    // flag to tell our ESA authenticator not to try an invalidate DELETE request
+    // because it's been triggered by this service's 401 handling which means the
+    // DELETE would fail and get stuck in an infinite loop
+    // TODO: find a more elegant way to handle this
+    skipSessionDeletion: false,
 
-        headers['X-Ghost-Version'] = config.APP.version;
-        headers['App-Pragma'] = 'no-cache';
+    get headers() {
+        return {
+            'X-Ghost-Version': config.APP.version,
+            'App-Pragma': 'no-cache'
+        };
+    },
 
-        if (session.get('isAuthenticated')) {
-            session.authorize('authorizer:oauth2', (headerName, headerValue) => {
-                headers[headerName] = headerValue;
-            });
+    init() {
+        this._super(...arguments);
+        if (this.isTesting === undefined) {
+            this.isTesting = config.environment === 'test';
         }
-
-        return headers;
-    }).volatile(),
+    },
 
     // ember-ajax recognises `application/vnd.api+json` as a JSON-API request
     // and formats appropriately, we want to handle `application/json` the same
     _makeRequest(hash) {
-        let isAuthenticated = this.get('session.isAuthenticated');
-        let isGhostRequest = hash.url.indexOf('/ghost/api/') !== -1;
-        let isTokenRequest = isGhostRequest && hash.url.match(/authentication\/(?:token|ghost)/);
-        let tokenExpiry = this.get('session.authenticated.expires_at');
-        let isTokenExpired = tokenExpiry < (new Date()).getTime();
-
         if (isJSONContentType(hash.contentType) && hash.type !== 'GET') {
             if (typeof hash.data === 'object') {
                 hash.data = JSON.stringify(hash.data);
             }
         }
 
-        // we can get into a situation where the app is left open without a
-        // network connection and the token subsequently expires, this will
-        // result in the next network request returning a 401 and killing the
-        // session. This is an attempt to detect that and restore the session
-        // using the stored refresh token before continuing with the request
-        //
-        // TODO:
-        // - this might be quite blunt, if we have a lot of requests at once
-        //   we probably want to queue the requests until the restore completes
-        // BUG:
-        // - the original caller gets a rejected promise with `undefined` instead
-        //   of the AjaxError object when session restore fails. This isn't a
-        //   huge deal because the session will be invalidated and app reloaded
-        //   but it would be nice to be consistent
-        if (isAuthenticated && isGhostRequest && !isTokenRequest && isTokenExpired) {
-            return this.get('session').restore().then(() => {
-                return this._makeRequest(hash);
-            });
-        }
+        hash.withCredentials = true;
 
-        return this._super(...arguments);
+        return this._super(hash);
     },
 
-    handleResponse(status, headers, payload) {
+    handleResponse(status, headers, payload, request) {
         if (this.isVersionMismatchError(status, headers, payload)) {
-            return new VersionMismatchError(payload.errors);
+            return new VersionMismatchError(payload);
         } else if (this.isServerUnreachableError(status, headers, payload)) {
-            return new ServerUnreachableError(payload.errors);
+            return new ServerUnreachableError(payload);
         } else if (this.isRequestEntityTooLargeError(status, headers, payload)) {
-            return new RequestEntityTooLargeError(payload.errors);
+            return new RequestEntityTooLargeError(payload);
         } else if (this.isUnsupportedMediaTypeError(status, headers, payload)) {
-            return new UnsupportedMediaTypeError(payload.errors);
+            return new UnsupportedMediaTypeError(payload);
         } else if (this.isMaintenanceError(status, headers, payload)) {
-            return new MaintenanceError(payload.errors);
+            return new MaintenanceError(payload);
         } else if (this.isThemeValidationError(status, headers, payload)) {
-            return new ThemeValidationError(payload.errors);
+            return new ThemeValidationError(payload);
+        } else if (this.isHostLimitError(status, headers, payload)) {
+            return new HostLimitError(payload);
+        } else if (this.isEmailError(status, headers, payload)) {
+            return new EmailError(payload);
         }
 
-        // TODO: we may want to check that we are hitting our own API before
-        // logging the user out due to a 401 response
-        if (this.isUnauthorizedError(status, headers, payload) && this.get('session.isAuthenticated')) {
-            this.get('session').invalidate();
+        let isGhostRequest = GHOST_REQUEST.test(request.url);
+        let isAuthenticated = this.get('session.isAuthenticated');
+        let isUnauthorized = this.isUnauthorizedError(status, headers, payload);
+
+        if (isAuthenticated && isGhostRequest && isUnauthorized) {
+            this.skipSessionDeletion = true;
+            this.session.invalidate();
         }
 
         return this._super(...arguments);
@@ -202,7 +221,7 @@ let ajaxService = AjaxService.extend({
                     errors = [errors];
                 }
 
-                payload.errors = errors.map(function(error) {
+                payload.errors = errors.map(function (error) {
                     if (typeof error === 'string') {
                         return {message: error};
                     } else {
@@ -237,6 +256,14 @@ let ajaxService = AjaxService.extend({
 
     isThemeValidationError(status, headers, payload) {
         return isThemeValidationError(status, payload);
+    },
+
+    isHostLimitError(status, headers, payload) {
+        return isHostLimitError(status, payload);
+    },
+
+    isEmailError(status, headers, payload) {
+        return isEmailError(status, payload);
     }
 });
 

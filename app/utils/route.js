@@ -5,10 +5,10 @@ Route.reopen({
         willTransition(transition) {
             if (this.get('upgradeStatus.isRequired')) {
                 transition.abort();
-                this.get('upgradeStatus').requireUpgrade();
+                this.upgradeStatus.requireUpgrade();
                 return false;
             } else {
-                this._super(...arguments);
+                return true;
             }
         }
     }

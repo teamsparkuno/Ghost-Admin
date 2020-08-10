@@ -1,8 +1,10 @@
 import $ from 'jquery';
 import Component from '@ember/component';
+import md5 from 'blueimp-md5';
 import request from 'ember-ajax/request';
+import validator from 'validator';
 import {htmlSafe} from '@ember/string';
-import {inject as injectService} from '@ember/service';
+import {inject as service} from '@ember/service';
 import {task, timeout} from 'ember-concurrency';
 
 const ANIMATION_TIMEOUT = 1000;
@@ -22,6 +24,9 @@ const ANIMATION_TIMEOUT = 1000;
  * @property  {String}      imageBackground   String containing the background-image css property with the gravatar url
  */
 export default Component.extend({
+    config: service(),
+    ghostPaths: service(),
+
     email: '',
     size: 180,
     debounce: 300,
@@ -29,21 +34,19 @@ export default Component.extend({
     imageFile: null,
     hasUploadedImage: false,
 
+    _defaultImageUrl: '',
+
     // closure actions
     setImage() {},
-
-    config: injectService(),
-    ghostPaths: injectService(),
 
     placeholderStyle: htmlSafe('background-image: url()'),
     avatarStyle: htmlSafe('display: none'),
 
-    _defaultImageUrl: '',
-
     init() {
         this._super(...arguments);
 
-        this._defaultImageUrl = `${this.get('ghostPaths.assetRoot')}img/user-image.png`;
+        let defaultImage = '/img/user-image.png';
+        this._defaultImageUrl = this.get('ghostPaths.assetRoot').replace(/\/$/, '') + defaultImage;
         this._setPlaceholderImage(this._defaultImageUrl);
     },
 
@@ -51,7 +54,39 @@ export default Component.extend({
         this._super(...arguments);
 
         if (this.get('config.useGravatar')) {
-            this.get('setGravatar').perform();
+            this.setGravatar.perform();
+        }
+    },
+
+    actions: {
+        imageSelected(fileList, resetInput) {
+            // eslint-disable-next-line
+            let imageFile = fileList[0];
+
+            if (imageFile) {
+                let reader = new FileReader();
+
+                this.set('imageFile', imageFile);
+                this.setImage(imageFile);
+
+                reader.addEventListener('load', () => {
+                    let dataURL = reader.result;
+                    this.set('previewDataURL', dataURL);
+                }, false);
+
+                reader.readAsDataURL(imageFile);
+            }
+
+            resetInput();
+        },
+
+        openFileDialog(event) {
+            // simulate click to open file dialog
+            // using jQuery because IE11 doesn't support MouseEvent
+            $(event.target)
+                .closest('figure')
+                .find('input[type="file"]')
+                .click();
         }
     },
 
@@ -62,8 +97,10 @@ export default Component.extend({
 
         // this is needed to work around inconsistencies with dropping files
         // from Chrome's downloads bar
-        let eA = event.dataTransfer.effectAllowed;
-        event.dataTransfer.dropEffect = (eA === 'move' || eA === 'linkMove') ? 'move' : 'copy';
+        if (navigator.userAgent.indexOf('Chrome') > -1) {
+            let eA = event.dataTransfer.effectAllowed;
+            event.dataTransfer.dropEffect = (eA === 'move' || eA === 'linkMove') ? 'move' : 'copy';
+        }
 
         event.stopPropagation();
         event.preventDefault();
@@ -82,13 +119,13 @@ export default Component.extend({
     },
 
     setGravatar: task(function* () {
-        yield timeout(this.get('debounce'));
+        yield timeout(this.debounce);
 
-        let email = this.get('email');
+        let email = this.email;
 
-        if (validator.isEmail(email)) {
-            let size = this.get('size');
-            let gravatarUrl = `//www.gravatar.com/avatar/${window.md5(email)}?s=${size}&d=404`;
+        if (validator.isEmail(email || '')) {
+            let size = this.size;
+            let gravatarUrl = `//www.gravatar.com/avatar/${md5(email)}?s=${size}&d=404`;
 
             try {
                 // HEAD request is needed otherwise jquery attempts to process
@@ -99,7 +136,6 @@ export default Component.extend({
                 // wait for fade-in animation to finish before removing placeholder
                 yield timeout(ANIMATION_TIMEOUT);
                 this._setPlaceholderImage('');
-
             } catch (e) {
                 // gravatar doesn't exist so make sure we're still showing the placeholder
                 this._setPlaceholderImage(this._defaultImageUrl);
@@ -122,43 +158,9 @@ export default Component.extend({
         let fileName = data.files[0].name;
 
         if ((/\.(gif|jpe?g|png|svg?z)$/i).test(fileName)) {
-            this.sendAction('setImage', data);
-        }
-    },
-
-    actions: {
-        imageSelected(fileList) {
-            // eslint-disable-next-line
-            let imageFile = fileList[0];
-
-            if (imageFile) {
-                let reader = new FileReader();
-
-                this.set('imageFile', imageFile);
-                this.setImage(imageFile);
-
-                reader.addEventListener('load', () => {
-                    let dataURL = reader.result;
-                    this.set('previewDataURL', dataURL);
-                }, false);
-
-                reader.readAsDataURL(imageFile);
-            }
-        },
-
-        openFileDialog(event) {
-            let fileInput = $(event.target)
-                .closest('figure')
-                .find('input[type="file"]');
-
-            if (fileInput.length > 0) {
-                // reset file input value before clicking so that the same image
-                // can be selected again
-                fileInput.value = '';
-
-                // simulate click to open file dialog
-                // using jQuery because IE11 doesn't support MouseEvent
-                $(fileInput).click();
+            let action = this.setImage;
+            if (action) {
+                action(data);
             }
         }
     }

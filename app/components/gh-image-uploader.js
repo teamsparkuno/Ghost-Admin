@@ -6,23 +6,24 @@ import {
     isUnsupportedMediaTypeError,
     isVersionMismatchError
 } from 'ghost-admin/services/ajax';
-import {assign} from '@ember/polyfills';
 import {computed} from '@ember/object';
+import {get} from '@ember/object';
 import {htmlSafe} from '@ember/string';
-import {inject as injectService} from '@ember/service';
-import {invokeAction} from 'ember-invoke-action';
+import {isArray} from '@ember/array';
 import {isBlank} from '@ember/utils';
 import {isArray as isEmberArray} from '@ember/array';
 import {run} from '@ember/runloop';
+import {inject as service} from '@ember/service';
 
 export const IMAGE_MIME_TYPES = 'image/gif,image/jpg,image/jpeg,image/png,image/svg+xml';
 export const IMAGE_EXTENSIONS = ['gif', 'jpg', 'jpeg', 'png', 'svg'];
+export const IMAGE_PARAMS = {purpose: 'image'};
 
 export default Component.extend({
-    ajax: injectService(),
-    config: injectService(),
-    notifications: injectService(),
-    settings: injectService(),
+    ajax: service(),
+    config: service(),
+    notifications: service(),
+    settings: service(),
 
     tagName: 'section',
     classNames: ['gh-image-uploader'],
@@ -32,9 +33,12 @@ export default Component.extend({
     text: '',
     altText: '',
     saveButton: true,
-    accept: null,
+    accept: '',
     extensions: null,
     uploadUrl: null,
+    paramName: 'file',
+    paramsHash: null,
+    resourceName: 'images',
     validate: null,
     allowUnsplash: false,
 
@@ -46,28 +50,41 @@ export default Component.extend({
 
     _defaultAccept: IMAGE_MIME_TYPES,
     _defaultExtensions: IMAGE_EXTENSIONS,
-    _defaultUploadUrl: '/uploads/',
+    _defaultUploadUrl: '/images/upload/',
+    _defaultParamsHash: IMAGE_PARAMS,
     _showUnsplash: false,
+
+    // Allowed actions
+    fileSelected: () => {},
+    update: () => {},
+    uploadStarted: () => {},
+    uploadFinished: () => {},
+    uploadSuccess: () => {},
+    uploadFailed: () => {},
 
     // TODO: this wouldn't be necessary if the server could accept direct
     // file uploads
     formData: computed('file', function () {
-        let file = this.get('file');
+        let file = this.file;
         let formData = new FormData();
 
-        formData.append('uploadimage', file);
+        formData.append(this.paramName, file);
+
+        Object.keys(this.paramsHash || {}).forEach((key) => {
+            formData.append(key, this.paramsHash[key]);
+        });
 
         return formData;
     }),
 
     description: computed('text', 'altText', function () {
-        let altText = this.get('altText');
+        let altText = this.altText;
 
-        return this.get('text') || (altText ? `Upload image of "${altText}"` : 'Upload an image');
+        return this.text || (altText ? `Upload image of "${altText}"` : 'Upload an image');
     }),
 
     progressStyle: computed('uploadPercentage', function () {
-        let percentage = this.get('uploadPercentage');
+        let percentage = this.uploadPercentage;
         let width = '';
 
         if (percentage > 0) {
@@ -79,30 +96,68 @@ export default Component.extend({
         return htmlSafe(`width: ${width}`);
     }),
 
-    // HACK: this settings/config dance is needed because the "override" only
-    // happens when visiting the unsplash app settings route
-    // TODO: move the override logic to the server, client knows too much
-    // about which values should override others
-    unsplash: computed('config.unsplashAPI', 'settings.unsplash', function () {
-        let unsplashConfig = this.get('config.unsplashAPI');
-        let unsplashSettings = this.get('settings.unsplash');
-        let unsplash = assign({}, unsplashConfig, unsplashSettings);
+    init() {
+        this._super(...arguments);
 
-        return unsplash;
-    }),
+        if (!this.accept) {
+            this.set('accept', this._defaultAccept);
+        }
+        if (!this.extensions) {
+            this.set('extensions', this._defaultExtensions);
+        }
+        if (!this.uploadUrl) {
+            this.set('uploadUrl', this._defaultUploadUrl);
+        }
+        if (!this.paramsHash) {
+            this.set('paramsHash', this._defaultParamsHash);
+        }
+    },
 
     didReceiveAttrs() {
-        let image = this.get('image');
+        let image = this.image;
         this.set('url', image);
+    },
 
-        if (!this.get('accept')) {
-            this.set('accept', this.get('_defaultAccept'));
-        }
-        if (!this.get('extensions')) {
-            this.set('extensions', this.get('_defaultExtensions'));
-        }
-        if (!this.get('uploadUrl')) {
-            this.set('uploadUrl', this.get('_defaultUploadUrl'));
+    actions: {
+        fileSelected(fileList, resetInput) {
+            // can't use array destructuring here as FileList is not a strict
+            // array and fails in Safari
+            let file = fileList[0];
+            let validationResult = this._validate(file);
+
+            this.set('file', file);
+            this.fileSelected(file);
+
+            if (validationResult === true) {
+                run.schedule('actions', this, function () {
+                    this.generateRequest();
+
+                    if (resetInput) {
+                        resetInput();
+                    }
+                });
+            } else {
+                this._uploadFailed(validationResult);
+
+                if (resetInput) {
+                    resetInput();
+                }
+            }
+        },
+
+        addUnsplashPhoto({src}) {
+            this.set('url', src);
+            this.send('saveUrl');
+        },
+
+        reset() {
+            this.set('file', null);
+            this.set('uploadPercentage', 0);
+        },
+
+        saveUrl() {
+            let url = this.url;
+            this.update(url);
         }
     },
 
@@ -113,8 +168,10 @@ export default Component.extend({
 
         // this is needed to work around inconsistencies with dropping files
         // from Chrome's downloads bar
-        let eA = event.dataTransfer.effectAllowed;
-        event.dataTransfer.dropEffect = (eA === 'move' || eA === 'linkMove') ? 'move' : 'copy';
+        if (navigator.userAgent.indexOf('Chrome') > -1) {
+            let eA = event.dataTransfer.effectAllowed;
+            event.dataTransfer.dropEffect = (eA === 'move' || eA === 'linkMove') ? 'move' : 'copy';
+        }
 
         event.stopPropagation();
         event.preventDefault();
@@ -137,10 +194,6 @@ export default Component.extend({
         }
     },
 
-    _uploadStarted() {
-        invokeAction(this, 'uploadStarted');
-    },
-
     _uploadProgress(event) {
         if (event.lengthComputable) {
             run(() => {
@@ -150,49 +203,63 @@ export default Component.extend({
         }
     },
 
-    _uploadFinished() {
-        invokeAction(this, 'uploadFinished');
-    },
-
     _uploadSuccess(response) {
-        this.set('url', response);
+        let uploadResponse;
+        let responseUrl;
+
+        try {
+            uploadResponse = JSON.parse(response);
+        } catch (e) {
+            if (!(e instanceof SyntaxError)) {
+                throw e;
+            }
+        }
+
+        if (uploadResponse) {
+            let resource = get(uploadResponse, this.resourceName);
+            if (resource && isArray(resource) && resource[0]) {
+                responseUrl = get(resource[0], 'url');
+            }
+        }
+
+        this.set('url', responseUrl);
         this.send('saveUrl');
         this.send('reset');
-        invokeAction(this, 'uploadSuccess', response);
+        this.uploadSuccess(responseUrl);
     },
 
     _uploadFailed(error) {
         let message;
 
         if (isVersionMismatchError(error)) {
-            this.get('notifications').showAPIError(error);
+            this.notifications.showAPIError(error);
         }
 
         if (isUnsupportedMediaTypeError(error)) {
-            let validExtensions = this.get('extensions').join(', .').toUpperCase();
+            let validExtensions = this.extensions.join(', .').toUpperCase();
             validExtensions = `.${validExtensions}`;
 
             message = `The image type you uploaded is not supported. Please use ${validExtensions}`;
         } else if (isRequestEntityTooLargeError(error)) {
             message = 'The image you uploaded was larger than the maximum file size your server allows.';
-        } else if (error.errors && !isBlank(error.errors[0].message)) {
-            message = error.errors[0].message;
+        } else if (error.payload.errors && !isBlank(error.payload.errors[0].message)) {
+            message = error.payload.errors[0].message;
         } else {
             message = 'Something went wrong :(';
         }
 
         this.set('failureMessage', message);
-        invokeAction(this, 'uploadFailed', error);
+        this.uploadFailed(error);
     },
 
     generateRequest() {
-        let ajax = this.get('ajax');
-        let formData = this.get('formData');
-        let uploadUrl = this.get('uploadUrl');
+        let ajax = this.ajax;
+        let formData = this.formData;
+        let uploadUrl = this.uploadUrl;
         // CASE: we want to upload an icon and we have to POST it to a different endpoint, expecially for icons
         let url = `${ghostPaths().apiRoot}${uploadUrl}`;
 
-        this._uploadStarted();
+        this.uploadStarted();
 
         ajax.post(url, {
             data: formData,
@@ -209,25 +276,24 @@ export default Component.extend({
                 return xhr;
             }
         }).then((response) => {
-            let url = JSON.parse(response);
-            this._uploadSuccess(url);
+            this._uploadSuccess(response);
         }).catch((error) => {
             this._uploadFailed(error);
         }).finally(() => {
-            this._uploadFinished();
+            this.uploadFinished();
         });
     },
 
     _validate(file) {
-        if (this.get('validate')) {
-            return invokeAction(this, 'validate', file);
+        if (this.validate) {
+            return this.validate(file);
         } else {
             return this._defaultValidator(file);
         }
     },
 
     _defaultValidator(file) {
-        let extensions = this.get('extensions');
+        let extensions = this.extensions;
         let [, extension] = (/(?:\.([^.]+))?$/).exec(file.name);
 
         if (!isEmberArray(extensions)) {
@@ -239,41 +305,5 @@ export default Component.extend({
         }
 
         return true;
-    },
-
-    actions: {
-        fileSelected(fileList) {
-            // can't use array destructuring here as FileList is not a strict
-            // array and fails in Safari
-            // eslint-disable-next-line ember-suave/prefer-destructuring
-            let file = fileList[0];
-            let validationResult = this._validate(file);
-
-            this.set('file', file);
-            invokeAction(this, 'fileSelected', file);
-
-            if (validationResult === true) {
-                run.schedule('actions', this, function () {
-                    this.generateRequest();
-                });
-            } else {
-                this._uploadFailed(validationResult);
-            }
-        },
-
-        addUnsplashPhoto(photo) {
-            this.set('url', photo.urls.regular);
-            this.send('saveUrl');
-        },
-
-        reset() {
-            this.set('file', null);
-            this.set('uploadPercentage', 0);
-        },
-
-        saveUrl() {
-            let url = this.get('url');
-            invokeAction(this, 'update', url);
-        }
     }
 });

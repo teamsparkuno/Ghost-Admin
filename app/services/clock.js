@@ -1,10 +1,7 @@
-import Ember from 'ember';
 import Service from '@ember/service';
+import config from 'ghost-admin/config/environment';
 import moment from 'moment';
 import {run} from '@ember/runloop';
-
-// ember-cli-shims doesn't export Ember.testing
-const {testing} = Ember;
 
 const ONE_SECOND = 1000;
 
@@ -13,9 +10,10 @@ const ONE_SECOND = 1000;
 export default Service.extend({
     second: null,
     minute: null,
-    hour:   null,
+    hour: null,
 
     init() {
+        this._super(...arguments);
         this.tick();
     },
 
@@ -25,15 +23,14 @@ export default Service.extend({
         this.setProperties({
             second: now.seconds(),
             minute: now.minutes(),
-            hour:   now.hours()
+            hour: now.hours()
         });
 
-        if (!testing) {
+        if (config.environment !== 'test') {
             run.later(() => {
                 this.tick();
             }, ONE_SECOND);
         }
-
     }
 
 });

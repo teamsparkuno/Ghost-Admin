@@ -5,7 +5,7 @@ export default [
         created_at: '2015-09-11T09:44:30.805Z',
         created_by: 1,
         key: 'title',
-        type: 'blog',
+        group: 'site',
         updated_at: '2015-10-04T16:26:05.195Z',
         updated_by: 1,
         value: 'Test Blog'
@@ -15,7 +15,7 @@ export default [
         created_at: '2015-09-11T09:44:30.806Z',
         created_by: 1,
         key: 'description',
-        type: 'blog',
+        group: 'site',
         updated_at: '2015-10-04T16:26:05.198Z',
         updated_by: 1,
         value: 'Thoughts, stories and ideas.'
@@ -24,7 +24,7 @@ export default [
         id: 3,
         key: 'logo',
         value: '/content/images/2013/Nov/logo.png',
-        type: 'blog',
+        group: 'site',
         created_at: '2013-11-25T14:48:11.000Z',
         created_by: 1,
         updated_at: '2015-10-27T17:39:58.273Z',
@@ -34,7 +34,7 @@ export default [
         id: 4,
         key: 'cover_image',
         value: '/content/images/2014/Feb/cover.jpg',
-        type: 'blog',
+        group: 'site',
         created_at: '2013-11-25T14:48:11.000Z',
         created_by: 1,
         updated_at: '2015-10-27T17:39:58.276Z',
@@ -42,40 +42,20 @@ export default [
     },
     {
         id: 5,
-        key: 'default_lang',
-        value: 'en_US',
-        type: 'blog',
+        key: 'lang',
+        value: 'en',
+        group: 'site',
         created_at: '2013-11-25T14:48:11.000Z',
         created_by: 1,
         updated_at: '2015-10-27T17:39:58.278Z',
         updated_by: 1
     },
     {
-        id: 7,
-        key: 'force_i18n',
-        value: 'true',
-        type: 'blog',
-        created_at: '2013-11-25T14:48:11.000Z',
-        created_by: 1,
-        updated_at: '2015-10-27T17:39:58.280Z',
-        updated_by: 1
-    },
-    {
-        id: 9,
-        key: 'permalinks',
-        value: '/:slug/',
-        type: 'blog',
-        created_at: '2014-01-14T12:01:51.000Z',
-        created_by: 1,
-        updated_at: '2015-10-27T17:39:58.282Z',
-        updated_by: 1
-    },
-    {
         id: 10,
         created_at: '2015-09-11T09:44:30.809Z',
         created_by: 1,
-        key: 'ghost_head',
-        type: 'blog',
+        key: 'codeinjection_head',
+        group: 'site',
         updated_at: '2015-09-23T13:32:49.858Z',
         updated_by: 1,
         value: ''
@@ -84,8 +64,8 @@ export default [
         id: 11,
         created_at: '2015-09-11T09:44:30.809Z',
         created_by: 1,
-        key: 'ghost_foot',
-        type: 'blog',
+        key: 'codeinjection_foot',
+        group: 'site',
         updated_at: '2015-09-23T13:32:49.858Z',
         updated_by: 1,
         value: ''
@@ -93,8 +73,8 @@ export default [
     {
         id: 12,
         key: 'labs',
-        value: '{"subscribers":true}',
-        type: 'blog',
+        value: '{}',
+        group: 'labs',
         created_at: '2015-01-12T18:29:01.000Z',
         created_by: 1,
         updated_at: '2015-10-27T17:39:58.288Z',
@@ -105,7 +85,7 @@ export default [
         created_at: '2015-09-11T09:44:30.810Z',
         created_by: 1,
         key: 'navigation',
-        type: 'blog',
+        group: 'site',
         updated_at: '2015-09-23T13:32:49.868Z',
         updated_by: 1,
         value: JSON.stringify([
@@ -118,7 +98,7 @@ export default [
         created_at: '2015-09-11T09:44:30.810Z',
         created_by: 1,
         key: 'is_private',
-        type: 'blog',
+        group: 'private',
         updated_at: '2015-09-23T13:32:49.868Z',
         updated_by: 1,
         value: false
@@ -128,7 +108,7 @@ export default [
         created_at: '2015-09-11T09:44:30.810Z',
         created_by: 1,
         key: 'password',
-        type: 'blog',
+        group: 'private',
         updated_at: '2015-09-23T13:32:49.868Z',
         updated_by: 1,
         value: ''
@@ -138,17 +118,17 @@ export default [
         created_at: '2016-05-05T15:04:03.115Z',
         created_by: 1,
         key: 'slack',
-        type: 'blog',
+        group: 'slack',
         updated_at: '2016-05-05T18:33:09.168Z',
         updated_by: 1,
-        value: '[{"url":""}]'
+        value: '[{"url":"", "username":"Ghost"}]'
     },
     {
         id: 17,
         created_at: '2016-05-05T15:40:12.133Z',
         created_by: 1,
         key: 'facebook',
-        type: 'blog',
+        group: 'site',
         updated_at: '2016-05-08T15:20:25.953Z',
         updated_by: 1,
         value: 'test'
@@ -158,7 +138,7 @@ export default [
         created_at: '2016-05-05T15:40:12.134Z',
         created_by: 1,
         key: 'twitter',
-        type: 'blog',
+        group: 'site',
         updated_at: '2016-05-08T15:20:25.954Z',
         updated_by: 1,
         value: '@test'
@@ -167,8 +147,8 @@ export default [
         id: 19,
         created_at: '2015-09-11T09:44:30.810Z',
         created_by: 1,
-        key: 'active_timezone',
-        type: 'blog',
+        key: 'timezone',
+        group: 'site',
         updated_at: '2015-09-23T13:32:49.868Z',
         updated_by: 1,
         value: 'Etc/UTC'
@@ -178,7 +158,7 @@ export default [
         created_at: '2017-01-09T08:40:59.000Z',
         created_by: 1,
         key: 'amp',
-        type: 'blog',
+        group: 'amp',
         updated_at: '2017-01-09T08:49:42.991Z',
         updated_by: 1,
         value: 'true'
@@ -187,7 +167,7 @@ export default [
         id: 22,
         key: 'icon',
         value: '/content/images/2014/Feb/favicon.ico',
-        type: 'blog',
+        group: 'site',
         created_at: '2013-11-25T14:48:11.000Z',
         created_by: 1,
         updated_at: '2015-10-27T17:39:58.276Z',
@@ -195,12 +175,32 @@ export default [
     },
     {
         id: 23,
-        created_at: '2017-08-11T06:38:10.000Z',
+        group: 'members',
+        key: 'members_subscription_settings',
+        value: '{"allowSelfSignup":true,"fromAddress":"noreply","paymentProcessors":[{"adapter":"stripe","config":{"secret_token":"","public_token":"","product":{"name":"Ghost Subscription"},"plans":[{"name":"Monthly","currency":"usd","interval":"month","amount":""},{"name":"Yearly","currency":"usd","interval":"year","amount":""}]}}]}',
+        created_at: '2019-10-09T09:49:00.000Z',
         created_by: 1,
-        key: 'unsplash',
-        type: 'blog',
-        updated_at: '2017-08-11T08:00:14.000Z',
+        updated_at: '2019-10-09T09:49:00.000Z',
+        updated_by: 1
+    },
+    {
+        id: 24,
+        group: 'email',
+        key: 'bulk_email_settings',
+        value: '{"provider":"mailgun","apiKey":"","domain":"","baseUrl":""}',
+        created_at: '2019-10-09T09:49:00.000Z',
+        created_by: 1,
+        updated_at: '2019-10-09T09:49:00.000Z',
+        updated_by: 1
+    },
+    {
+        id: 25,
+        key: 'secondary_navigation',
+        group: 'site',
+        created_at: '2019-11-20T09:44:30.810Z',
+        created_by: 1,
+        updated_at: '2019-11-20T13:32:49.868Z',
         updated_by: 1,
-        value: '{"applicationId":"","isActive":false}'
+        value: JSON.stringify([])
     }
 ];

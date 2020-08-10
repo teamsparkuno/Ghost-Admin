@@ -1,47 +1,66 @@
-import $ from 'jquery';
 import AuthenticatedRoute from 'ghost-admin/routes/authenticated';
-import InfinityRoute from 'ember-infinity/mixins/route';
 import {assign} from '@ember/polyfills';
 import {isBlank} from '@ember/utils';
+import {inject as service} from '@ember/service';
 
-export default AuthenticatedRoute.extend(InfinityRoute, {
-    titleToken: 'Content',
-
-    perPage: 30,
-    perPageParam: 'limit',
-    totalPagesParam: 'meta.pagination.pages',
+export default AuthenticatedRoute.extend({
+    infinity: service(),
+    router: service(),
 
     queryParams: {
-        type: {
-            refreshModel: true,
-            replace: true
-        },
-        author: {
-            refreshModel: true,
-            replace: true
-        },
-        tag: {
-            refreshModel: true,
-            replace: true
-        },
-        order: {
-            refreshModel: true,
-            replace: true
-        }
+        type: {refreshModel: true},
+        visibility: {refreshModel: true},
+        access: {refreshModel: true},
+        author: {refreshModel: true},
+        tag: {refreshModel: true},
+        order: {refreshModel: true}
     },
 
-    _type: null,
+    modelName: 'post',
+
+    perPage: 30,
+
+    init() {
+        this._super(...arguments);
+
+        // if we're already on this route and we're transiting _to_ this route
+        // then the filters are being changed and we shouldn't create a new
+        // browser history entry
+        // see https://github.com/TryGhost/Ghost/issues/11057
+        this.router.on('routeWillChange', (transition) => {
+            if (transition.to && (this.routeName === 'posts' || this.routeName === 'pages')) {
+                let toThisRoute = transition.to.find(route => route.name === this.routeName);
+                if (transition.from && transition.from.name === this.routeName && toThisRoute) {
+                    transition.method('replace');
+                }
+            }
+        });
+    },
 
     model(params) {
-        return this.get('session.user').then((user) => {
-            let queryParams = this._typeParams(params.type);
-            let filterParams = {tag: params.tag};
+        return this.session.user.then((user) => {
+            let queryParams = {};
+            let filterParams = {tag: params.tag, visibility: params.visibility};
+            let paginationParams = {
+                perPageParam: 'limit',
+                totalPagesParam: 'meta.pagination.pages'
+            };
 
-            if (user.get('isAuthor')) {
+            assign(filterParams, this._getTypeFilters(params.type));
+
+            if (params.type === 'featured') {
+                filterParams.featured = true;
+            }
+
+            if (user.isAuthor) {
                 // authors can only view their own posts
-                filterParams.author = user.get('slug');
+                filterParams.authors = user.slug;
+            } else if (user.isContributor) {
+                // Contributors can only view their own draft posts
+                filterParams.authors = user.slug;
+                filterParams.status = 'draft';
             } else if (params.author) {
-                filterParams.author = params.author;
+                filterParams.authors = params.author;
             }
 
             let filter = this._filterString(filterParams);
@@ -53,40 +72,67 @@ export default AuthenticatedRoute.extend(InfinityRoute, {
                 queryParams.order = params.order;
             }
 
-            queryParams.formats = 'mobiledoc,plaintext';
+            let perPage = this.perPage;
+            let paginationSettings = assign({perPage, startingPage: 1}, paginationParams, queryParams);
 
-            let perPage = this.get('perPage');
-            let paginationSettings = assign({perPage, startingPage: 1}, queryParams);
-
-            return this.infinityModel('post', paginationSettings);
+            return this.infinity.model(this.modelName, paginationSettings);
         });
     },
 
-    _typeParams(type) {
-        let status = 'all';
-        let staticPages = 'all';
+    // trigger a background load of all tags and authors for use in the filter dropdowns
+    setupController(controller) {
+        this._super(...arguments);
+
+        if (!controller._hasLoadedTags) {
+            this.store.query('tag', {limit: 'all'}).then(() => {
+                controller._hasLoadedTags = true;
+            });
+        }
+
+        this.session.user.then((user) => {
+            if (!user.isAuthorOrContributor && !controller._hasLoadedAuthors) {
+                this.store.query('user', {limit: 'all'}).then(() => {
+                    controller._hasLoadedAuthors = true;
+                });
+            }
+        });
+    },
+
+    actions: {
+        queryParamsDidChange() {
+            // scroll back to the top
+            let contentList = document.querySelector('.content-list');
+            if (contentList) {
+                contentList.scrollTop = 0;
+            }
+
+            this._super(...arguments);
+        }
+    },
+
+    buildRouteInfoMetadata() {
+        return {
+            titleToken: 'Posts'
+        };
+    },
+
+    _getTypeFilters(type) {
+        let status = '[draft,scheduled,published]';
 
         switch (type) {
         case 'draft':
             status = 'draft';
-            staticPages = false;
             break;
         case 'published':
             status = 'published';
-            staticPages = false;
             break;
         case 'scheduled':
             status = 'scheduled';
-            staticPages = false;
-            break;
-        case 'page':
-            staticPages = true;
             break;
         }
 
         return {
-            status,
-            staticPages
+            status
         };
     },
 
@@ -98,39 +144,5 @@ export default AuthenticatedRoute.extend(InfinityRoute, {
                 return `${key}:${filter[key]}`;
             }
         }).compact().join('+');
-    },
-
-    // trigger a background load of all tags and authors for use in the filter dropdowns
-    setupController(controller) {
-        this._super(...arguments);
-
-        if (!controller._hasLoadedTags) {
-            this.get('store').query('tag', {limit: 'all'}).then(() => {
-                controller._hasLoadedTags = true;
-            });
-        }
-
-        this.get('session.user').then((user) => {
-            if (!user.get('isAuthor') && !controller._hasLoadedAuthors) {
-                this.get('store').query('user', {limit: 'all'}).then(() => {
-                    controller._hasLoadedAuthors = true;
-                });
-            }
-        });
-    },
-
-    actions: {
-        willTransition() {
-            if (this.get('controller')) {
-                this.resetController();
-            }
-        },
-
-        queryParamsDidChange() {
-            // scroll back to the top
-            $('.content-list').scrollTop(0);
-
-            this._super(...arguments);
-        }
     }
 });

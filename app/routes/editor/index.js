@@ -1,8 +1,8 @@
-import Route from '@ember/routing/route';
+import AuthenticatedRoute from 'ghost-admin/routes/authenticated';
 
-export default Route.extend({
+export default AuthenticatedRoute.extend({
     beforeModel() {
         this._super(...arguments);
-        this.transitionTo('editor.new');
+        this.replaceWith('editor.new', 'post');
     }
 });

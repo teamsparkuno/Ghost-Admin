@@ -16,7 +16,7 @@ export default function mockThemes(server) {
             }
         };
 
-        themeCount++;
+        themeCount += 1;
 
         theme = themes.create(theme);
 
@@ -26,7 +26,7 @@ export default function mockThemes(server) {
     server.del('/themes/:theme/', function ({themes}, {params}) {
         themes.findBy({name: params.theme}).destroy();
 
-        return new Response(204, {}, null);
+        return new Response(204);
     });
 
     server.put('/themes/:theme/activate/', function ({themes}, {params}) {

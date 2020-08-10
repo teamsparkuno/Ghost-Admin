@@ -10,14 +10,14 @@ module.exports = function (environment) {
         EmberENV: {
             FEATURES: {
                 // Here you can enable experimental features on an ember canary build
-                // e.g. 'with-controller': true
+                // e.g. EMBER_NATIVE_DECORATOR_SUPPORT: true
             },
             // @TODO verify that String/Function need to be enabled
             EXTEND_PROTOTYPES: {
                 Date: false,
                 Array: true,
                 String: true,
-                Function: true
+                Function: false
             }
         },
 
@@ -44,6 +44,7 @@ module.exports = function (environment) {
         ENV.APP.LOG_TRANSITIONS = true;
         ENV.APP.LOG_TRANSITIONS_INTERNAL = true;
         ENV.APP.LOG_VIEW_LOOKUPS = true;
+
         // Enable mirage here in order to mock API endpoints during development
         ENV['ember-cli-mirage'] = {
             enabled: false
@@ -59,6 +60,12 @@ module.exports = function (environment) {
         ENV.APP.LOG_VIEW_LOOKUPS = false;
 
         ENV.APP.rootElement = '#ember-testing';
+        ENV.APP.autoboot = false;
+
+        // Withuot manually setting this, pretender won't track requests
+        ENV['ember-cli-mirage'] = {
+            trackRequests: true
+        };
     }
 
     return ENV;

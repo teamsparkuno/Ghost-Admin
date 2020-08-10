@@ -1,6 +1,5 @@
 /* global key */
 import Component from '@ember/component';
-import {invokeAction} from 'ember-invoke-action';
 import {run} from '@ember/runloop';
 
 export default Component.extend({
@@ -9,29 +8,8 @@ export default Component.extend({
 
     _previousKeymasterScope: null,
 
-    _setupShortcuts() {
-        run(function () {
-            document.activeElement.blur();
-        });
-        this._previousKeymasterScope = key.getScope();
-
-        key('enter', 'modal', () => {
-            this.send('confirm');
-        });
-
-        key('escape', 'modal', () => {
-            this.send('closeModal');
-        });
-
-        key.setScope('modal');
-    },
-
-    _removeShortcuts() {
-        key.unbind('enter', 'modal');
-        key.unbind('escape', 'modal');
-
-        key.setScope(this._previousKeymasterScope);
-    },
+    // Allowed Actions
+    closeModal: () => {},
 
     didInsertElement() {
         this._super(...arguments);
@@ -49,7 +27,31 @@ export default Component.extend({
         },
 
         closeModal() {
-            invokeAction(this, 'closeModal');
+            this.closeModal();
         }
+    },
+
+    _setupShortcuts() {
+        run(function () {
+            document.activeElement.blur();
+        });
+
+        this._previousKeymasterScope = key.getScope();
+
+        key('enter', 'modal', () => {
+            this.send('confirm');
+        });
+
+        key('escape', 'modal', () => {
+            this.send('closeModal');
+        });
+
+        key.setScope('modal');
+    },
+
+    _removeShortcuts() {
+        key.unbind('enter', 'modal');
+        key.unbind('escape', 'modal');
+        key.setScope(this._previousKeymasterScope);
     }
 });

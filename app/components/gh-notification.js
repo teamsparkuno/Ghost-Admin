@@ -1,15 +1,16 @@
 import Component from '@ember/component';
 import {computed} from '@ember/object';
-import {inject as injectService} from '@ember/service';
+import {run} from '@ember/runloop';
+import {inject as service} from '@ember/service';
 
 export default Component.extend({
+    notifications: service(),
+
     tagName: 'article',
     classNames: ['gh-notification', 'gh-notification-passive'],
     classNameBindings: ['typeClass'],
 
     message: null,
-
-    notifications: injectService(),
 
     typeClass: computed('message.type', function () {
         let type = this.get('message.type');
@@ -17,7 +18,6 @@ export default Component.extend({
         let typeMapping;
 
         typeMapping = {
-            success: 'green',
             error: 'red',
             warn: 'yellow'
         };
@@ -32,21 +32,23 @@ export default Component.extend({
     didInsertElement() {
         this._super(...arguments);
 
-        this.$().on('animationend webkitAnimationEnd oanimationend MSAnimationEnd', (event) => {
-            if (event.originalEvent.animationName === 'fade-out') {
-                this.get('notifications').closeNotification(this.get('message'));
+        this._animationEndHandler = run.bind(this, function () {
+            if (event.animationName === 'fade-out') {
+                this.notifications.closeNotification(this.message);
             }
         });
+
+        this.element.addEventListener('animationend', this._animationEndHandler);
     },
 
     willDestroyElement() {
         this._super(...arguments);
-        this.$().off('animationend webkitAnimationEnd oanimationend MSAnimationEnd');
+        this.element.removeEventListener('animationend', this._animationEndHandler);
     },
 
     actions: {
         closeNotification() {
-            this.get('notifications').closeNotification(this.get('message'));
+            this.notifications.closeNotification(this.message);
         }
     }
 });

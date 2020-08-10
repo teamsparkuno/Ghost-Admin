@@ -1,6 +1,7 @@
 import BaseAdapter from 'ghost-admin/adapters/base';
 import {get} from '@ember/object';
 import {isNone} from '@ember/utils';
+import {underscore} from '@ember/string';
 
 // EmbeddedRelationAdapter will augment the query object in calls made to
 // DS.Store#findRecord, findAll, query, and queryRecord with the correct "includes"
@@ -74,12 +75,13 @@ export default BaseAdapter.extend({
     buildIncludeURL(store, modelName, id, snapshot, requestType, query) {
         let includes = this.getEmbeddedRelations(store, modelName);
         let url = this.buildURL(modelName, id, snapshot, requestType, query);
+        let parsedUrl = new URL(url);
 
         if (includes.length) {
-            url += `?include=${includes.join(',')}`;
+            parsedUrl.searchParams.append('include', includes.map(underscore).join(','));
         }
 
-        return url;
+        return parsedUrl.toString();
     },
 
     buildQuery(store, modelName, options) {
@@ -92,7 +94,7 @@ export default BaseAdapter.extend({
             if (typeof options === 'string' || typeof options === 'number') {
                 query = {};
                 query.id = options;
-                query.include = toInclude.join(',');
+                query.include = toInclude.map(underscore).join(',');
             } else if (typeof options === 'object' || isNone(options)) {
                 // If this is a find all (no existing query object) build one and attach
                 // the includes.
@@ -115,15 +117,25 @@ export default BaseAdapter.extend({
     getEmbeddedRelations(store, modelName) {
         let model = store.modelFor(modelName);
         let ret = [];
+        let embedded = [];
 
         // Iterate through the model's relationships and build a list
         // of those that need to be pulled in via "include" from the API
-        model.eachRelationship(function (name, meta) {
-            if (meta.kind === 'hasMany'
+        model.eachRelationship((name, meta) => {
+            if (
+                meta.kind === 'hasMany'
                 && Object.prototype.hasOwnProperty.call(meta.options, 'embedded')
-                && meta.options.embedded === 'always') {
+                && meta.options.embedded === 'always'
+            ) {
                 ret.push(name);
+                embedded.push([name, meta.type]);
             }
+        });
+
+        embedded.forEach(([relName, embeddedModelName]) => {
+            this.getEmbeddedRelations(store, embeddedModelName).forEach((name) => {
+                ret.push(`${relName}.${name}`);
+            });
         });
 
         return ret;

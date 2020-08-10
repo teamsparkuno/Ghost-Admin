@@ -1,23 +1,54 @@
 import Component from '@ember/component';
+import ShortcutsMixin from 'ghost-admin/mixins/shortcuts';
 import calculatePosition from 'ember-basic-dropdown/utils/calculate-position';
+import ctrlOrCmd from 'ghost-admin/utils/ctrl-or-cmd';
+import {and, equal, match, or} from '@ember/object/computed';
 import {computed} from '@ember/object';
+import {getOwner} from '@ember/application';
 import {htmlSafe} from '@ember/string';
-import {inject as injectService} from '@ember/service';
+import {inject as service} from '@ember/service';
 
-export default Component.extend({
-    config: injectService(),
-    feature: injectService(),
-    ghostPaths: injectService(),
-    router: injectService('router'),
-    session: injectService(),
-    ui: injectService(),
+export default Component.extend(ShortcutsMixin, {
+    billing: service(),
+    config: service(),
+    customViews: service(),
+    feature: service(),
+    ghostPaths: service(),
+    navigation: service(),
+    router: service(),
+    session: service(),
+    ui: service(),
+    whatsNew: service(),
 
     tagName: 'nav',
     classNames: ['gh-nav'],
-    classNameBindings: ['open'],
 
-    open: false,
     iconStyle: '',
+
+    showSearchModal: false,
+    shortcuts: null,
+
+    isIntegrationRoute: match('router.currentRouteName', /^settings\.integration/),
+    isSettingsRoute: match('router.currentRouteName', /^settings/),
+
+    // HACK: {{link-to}} should be doing this automatically but there appears to
+    // be a bug in Ember that's preventing it from working immediately after login
+    isOnSite: equal('router.currentRouteName', 'site'),
+
+    showTagsNavigation: or('session.user.isOwnerOrAdmin', 'session.user.isEditor'),
+    showMenuExtension: and('config.clientExtensions.menu', 'session.user.isOwner'),
+    showDropdownExtension: and('config.clientExtensions.dropdown', 'session.user.isOwner'),
+    showScriptExtension: and('config.clientExtensions.script', 'session.user.isOwner'),
+    showBilling: computed.reads('config.billingUrl'),
+
+    init() {
+        this._super(...arguments);
+
+        let shortcuts = {};
+
+        shortcuts[`${ctrlOrCmd}+k`] = {action: 'toggleSearchModal'};
+        this.shortcuts = shortcuts;
+    },
 
     // the menu has a rendering issue (#8307) when the the world is reloaded
     // during an import which we have worked around by not binding the icon
@@ -27,21 +58,32 @@ export default Component.extend({
         this._setIconStyle();
     },
 
-    mouseEnter() {
-        this.sendAction('onMouseEnter');
+    didInsertElement() {
+        this._super(...arguments);
+        this.registerShortcuts();
     },
 
-    showMenuExtension: computed('config.clientExtensions.menu', 'session.user.isOwner', function() {
-        return this.get('config.clientExtensions.menu') && this.get('session.user.isOwner');
-    }),
+    willDestroyElement() {
+        this.removeShortcuts();
+        this._super(...arguments);
+    },
 
-    showDropdownExtension: computed('config.clientExtensions.dropdown', 'session.user.isOwner', function() {
-        return this.get('config.clientExtensions.dropdown') && this.get('session.user.isOwner');
-    }),
-
-    showScriptExtension: computed('config.clientExtensions.script', 'session.user.isOwner', function() {
-        return this.get('config.clientExtensions.script') && this.get('session.user.isOwner');
-    }),
+    actions: {
+        transitionToOrRefreshSite() {
+            let {currentRouteName} = this.router;
+            if (currentRouteName === 'site') {
+                getOwner(this).lookup(`route:${currentRouteName}`).refresh();
+            } else {
+                this.router.transitionTo('site');
+            }
+        },
+        toggleSearchModal() {
+            this.toggleProperty('showSearchModal');
+        },
+        toggleBillingModal() {
+            this.billing.openBillingWindow(this.router.currentURL);
+        }
+    },
 
     // equivalent to "left: auto; right: -20px"
     userDropdownPosition(trigger, dropdown) {
@@ -55,9 +97,16 @@ export default Component.extend({
     },
 
     _setIconStyle() {
-        let icon = this.get('icon');
+        let icon = this.icon;
 
         if (icon === this._icon) {
+            return;
+        }
+
+        this._icon = icon;
+
+        if (icon && icon.match(/^https?:\/\//i)) {
+            this.set('iconStyle', htmlSafe(`background-image: url(${icon})`));
             return;
         }
 
@@ -71,12 +120,5 @@ export default Component.extend({
         iconUrl += `?t=${(new Date()).valueOf()}`;
 
         this.set('iconStyle', htmlSafe(`background-image: url(${iconUrl})`));
-        this._icon = icon;
-    },
-
-    actions: {
-        showMarkdownHelp() {
-            this.sendAction('showMarkdownHelp');
-        }
     }
 });

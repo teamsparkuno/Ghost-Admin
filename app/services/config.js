@@ -1,48 +1,62 @@
 import Ember from 'ember';
-import Service from '@ember/service';
-import {assign} from '@ember/polyfills';
+import RSVP from 'rsvp';
+import Service, {inject as service} from '@ember/service';
+import timezoneData from '@tryghost/timezone-data';
 import {computed} from '@ember/object';
-import {inject as injectService} from '@ember/service';
 
 // ember-cli-shims doesn't export _ProxyMixin
 const {_ProxyMixin} = Ember;
 
 export default Service.extend(_ProxyMixin, {
-    ajax: injectService(),
-    ghostPaths: injectService(),
+    ajax: service(),
+    ghostPaths: service(),
+    session: service(),
 
-    content: {},
+    content: null,
+
+    init() {
+        this._super(...arguments);
+        this.content = {};
+    },
 
     fetch() {
-        let configUrl = this.get('ghostPaths.url').api('configuration');
+        let promises = [];
 
-        return this.get('ajax').request(configUrl).then((publicConfig) => {
-            // normalize blogUrl to non-trailing-slash
-            let [{blogUrl}] = publicConfig.configuration;
-            publicConfig.configuration[0].blogUrl = blogUrl.replace(/\/$/, '');
+        promises.push(this.fetchUnauthenticated());
 
-            this.set('content', publicConfig.configuration[0]);
+        if (this.session.isAuthenticated) {
+            promises.push(this.fetchAuthenticated());
+        }
+
+        return RSVP.all(promises);
+    },
+
+    fetchUnauthenticated() {
+        let siteUrl = this.ghostPaths.url.api('site');
+        return this.ajax.request(siteUrl).then(({site}) => {
+            // normalize url to non-trailing-slash
+            site.blogUrl = site.url.replace(/\/$/, '');
+            site.blogTitle = site.title;
+            delete site.url;
+            delete site.title;
+
+            Object.assign(this.content, site);
+        }).then(() => {
+            this.notifyPropertyChange('content');
         });
     },
 
-    fetchPrivate() {
-        let privateConfigUrl = this.get('ghostPaths.url').api('configuration', 'private');
-
-        return this.get('ajax').request(privateConfigUrl).then((privateConfig) => {
-            assign(this.get('content'), privateConfig.configuration[0]);
+    fetchAuthenticated() {
+        let configUrl = this.ghostPaths.url.api('config');
+        return this.ajax.request(configUrl).then(({config}) => {
+            Object.assign(this.content, config);
+        }).then(() => {
+            this.notifyPropertyChange('content');
         });
     },
 
     availableTimezones: computed(function () {
-        let timezonesUrl = this.get('ghostPaths.url').api('configuration', 'timezones');
-
-        return this.get('ajax').request(timezonesUrl).then((configTimezones) => {
-            let [timezonesObj] = configTimezones.configuration;
-
-            timezonesObj = timezonesObj.timezones;
-
-            return timezonesObj;
-        });
+        return RSVP.resolve(timezoneData);
     }),
 
     blogDomain: computed('blogUrl', function () {

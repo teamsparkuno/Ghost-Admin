@@ -1,10 +1,12 @@
 import Component from '@ember/component';
 import moment from 'moment';
 import {computed} from '@ember/object';
-import {inject as injectService} from '@ember/service';
+import {equal, or} from '@ember/object/computed';
+import {inject as service} from '@ember/service';
 
 export default Component.extend({
-    clock: injectService(),
+    clock: service(),
+    session: service(),
 
     post: null,
     saveType: null,
@@ -14,6 +16,9 @@ export default Component.extend({
     _minDate: null,
 
     'data-test-publishmenu-scheduled': true,
+
+    disableEmailOption: equal('memberCount', 0),
+    showSendEmail: or('session.user.isOwner', 'session.user.isAdmin', 'session.user.isEditor'),
 
     timeToPublished: computed('post.publishedAtUTC', 'clock.second', function () {
         let publishedAtUTC = this.get('post.publishedAtUTC');
@@ -29,29 +34,29 @@ export default Component.extend({
 
     didInsertElement() {
         this.set('_minDate', new Date());
-        this.get('setSaveType')('schedule');
+        this.setSaveType('schedule');
     },
 
     actions: {
         setSaveType(type) {
-            if (this.get('saveType') !== type) {
+            if (this.saveType !== type) {
                 this.set('_minDate', new Date());
-                this.get('setSaveType')(type);
+                this.setSaveType(type);
 
                 // when draft switch to now to avoid validation errors
                 // when schedule switch back to saved date to avoid unnecessary re-scheduling
                 if (type === 'draft') {
-                    this.get('post').set('publishedAtBlogTZ', new Date());
+                    this.post.set('publishedAtBlogTZ', new Date());
                 } else {
-                    this.get('post').set('publishedAtBlogTZ', this.get('post.publishedAtUTC'));
+                    this.post.set('publishedAtBlogTZ', this.get('post.publishedAtUTC'));
                 }
 
-                this.get('post').validate();
+                this.post.validate();
             }
         },
 
         setDate(date) {
-            let post = this.get('post');
+            let post = this.post;
             let dateString = moment(date).format('YYYY-MM-DD');
 
             post.set('publishedAtBlogDate', dateString);
@@ -59,9 +64,9 @@ export default Component.extend({
         },
 
         setTime(time) {
-            let post = this.get('post');
+            let post = this.post;
 
-            if (!this.get('isClosing')) {
+            if (!this.isClosing) {
                 post.set('publishedAtBlogTime', time);
                 return post.validate();
             }

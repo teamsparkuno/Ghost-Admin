@@ -1,31 +1,13 @@
+import {describe, it} from 'mocha';
+import {expect} from 'chai';
 import {ghUserCanAdmin} from 'ghost-admin/helpers/gh-user-can-admin';
-import {it} from 'mocha';
 
 describe('Unit: Helper: gh-user-can-admin', function () {
     // Mock up roles and test for truthy
-    describe('Owner role', function () {
+    describe('Owner or admin roles', function () {
         let user = {
             get(role) {
-                if (role === 'isOwner') {
-                    return true;
-                } else if (role === 'isAdmin') {
-                    return false;
-                }
-            }
-        };
-
-        it(' - can be Admin', function () {
-            let result = ghUserCanAdmin([user]);
-            expect(result).to.equal(true);
-        });
-    });
-
-    describe('Administrator role', function () {
-        let user = {
-            get(role) {
-                if (role === 'isOwner') {
-                    return false;
-                } else if (role === 'isAdmin') {
+                if (role === 'isOwnerOrAdmin') {
                     return true;
                 }
             }
@@ -37,7 +19,7 @@ describe('Unit: Helper: gh-user-can-admin', function () {
         });
     });
 
-    describe('Editor and Author roles', function () {
+    describe('Editor, Author & Contributor roles', function () {
         let user = {
             get(role) {
                 if (role === 'isOwner') {

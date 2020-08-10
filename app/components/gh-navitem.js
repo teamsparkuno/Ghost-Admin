@@ -1,47 +1,46 @@
 import Component from '@ember/component';
-import SortableItem from 'ember-sortable/mixins/sortable-item';
 import ValidationState from 'ghost-admin/mixins/validation-state';
-import {alias, readOnly} from '@ember/object/computed';
+import boundOneWay from 'ghost-admin/utils/bound-one-way';
 import {computed} from '@ember/object';
+import {readOnly} from '@ember/object/computed';
 import {run} from '@ember/runloop';
 
-export default Component.extend(ValidationState, SortableItem, {
+export default Component.extend(ValidationState, {
     classNames: 'gh-blognav-item',
     classNameBindings: ['errorClass', 'navItem.isNew::gh-blognav-item--sortable'],
 
     new: false,
-    handle: '.gh-blognav-grab',
 
-    model: alias('navItem'),
+    // closure actions
+    addItem() {},
+    deleteItem() {},
+    updateUrl() {},
+    updateLabel() {},
+    label: boundOneWay('navItem.label'),
+    url: boundOneWay('navItem.url'),
+
     errors: readOnly('navItem.errors'),
 
     errorClass: computed('hasError', function () {
-        if (this.get('hasError')) {
-            return 'gh-blognav-item--error';
-        }
+        return this.hasError ? 'gh-blognav-item--error' : '';
     }),
 
-    keyPress(event) {
-        // enter key
-        if (event.keyCode === 13 && this.get('navItem.isNew')) {
-            event.preventDefault();
-            run.scheduleOnce('actions', this, function () {
-                this.send('addItem');
-            });
-        }
-    },
-
     actions: {
-        addItem() {
-            this.sendAction('addItem');
+        addItem(item) {
+            this.addItem(item);
         },
 
         deleteItem(item) {
-            this.sendAction('deleteItem', item);
+            this.deleteItem(item);
         },
 
         updateUrl(value) {
-            this.sendAction('updateUrl', value, this.get('navItem'));
+            return this.updateUrl(value, this.navItem);
+        },
+
+        updateLabel(value) {
+            this.set('label', value);
+            return this.updateLabel(value, this.navItem);
         },
 
         clearLabelErrors() {
@@ -50,6 +49,14 @@ export default Component.extend(ValidationState, SortableItem, {
 
         clearUrlErrors() {
             this.get('navItem.errors').remove('url');
+        }
+    },
+
+    keyPress(event) {
+        // enter key
+        if (event.keyCode === 13 && this.get('navItem.isNew')) {
+            event.preventDefault();
+            run.scheduleOnce('actions', this, this.send, 'addItem', this.navItem);
         }
     }
 });

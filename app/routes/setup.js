@@ -1,16 +1,11 @@
 import Route from '@ember/routing/route';
-import styleBody from 'ghost-admin/mixins/style-body';
-import {inject as injectService} from '@ember/service';
+import {inject as service} from '@ember/service';
 
-export default Route.extend(styleBody, {
-    titleToken: 'Setup',
-
-    classNames: ['ghost-setup'],
-
-    ghostPaths: injectService(),
-    session: injectService(),
-    ajax: injectService(),
-    config: injectService(),
+export default Route.extend({
+    ghostPaths: service(),
+    session: service(),
+    ajax: service(),
+    config: service(),
 
     // use the beforeModel hook to check to see whether or not setup has been
     // previously completed.  If it has, stop the transition into the setup page.
@@ -18,13 +13,13 @@ export default Route.extend(styleBody, {
         this._super(...arguments);
 
         if (this.get('session.isAuthenticated')) {
-            return this.transitionTo('posts');
+            return this.transitionTo('home');
         }
 
         let authUrl = this.get('ghostPaths.url').api('authentication', 'setup');
 
         // check the state of the setup process via the API
-        return this.get('ajax').request(authUrl)
+        return this.ajax.request(authUrl)
             .then((result) => {
                 let [setup] = result.setup;
 
@@ -50,5 +45,13 @@ export default Route.extend(styleBody, {
     deactivate() {
         this._super(...arguments);
         this.controllerFor('setup/two').set('password', '');
+    },
+
+    buildRouteInfoMetadata() {
+        return {
+            titleToken: 'Setup',
+            bodyClasses: ['unauthenticated-route'],
+            mainClasses: ['gh-main-white']
+        };
     }
 });

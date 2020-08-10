@@ -1,15 +1,66 @@
+import moment from 'moment';
 import {Response} from 'ember-cli-mirage';
 import {dasherize} from '@ember/string';
-import {isBlank} from '@ember/utils';
-import {paginateModelArray} from '../utils';
+import {isArray} from '@ember/array';
+import {isBlank, isEmpty} from '@ember/utils';
+import {paginateModelCollection} from '../utils';
+
+function normalizeBooleanParams(arr) {
+    if (!isArray(arr)) {
+        return arr;
+    }
+
+    return arr.map((i) => {
+        if (i === 'true') {
+            return true;
+        } else if (i === 'false') {
+            return false;
+        } else {
+            return i;
+        }
+    });
+}
+
+// TODO: use GQL to parse filter string?
+function extractFilterParam(param, filter) {
+    let filterRegex = new RegExp(`${param}:(.*?)(?:\\+|$)`);
+    let match;
+
+    let [, result] = filter.match(filterRegex) || [];
+    if (result.startsWith('[')) {
+        match = result.replace(/^\[|\]$/g, '').split(',');
+    } else if (result) {
+        match = [result];
+    }
+
+    return normalizeBooleanParams(match);
+}
+
+// NOTE: mirage requires Model objects when saving relationships, however the
+// `attrs` on POST/PUT requests will contain POJOs for authors and tags so we
+// need to replace them
+function extractAuthors(postAttrs, users) {
+    return postAttrs.authors.map(author => users.find(author.id));
+}
+
+function extractTags(postAttrs, tags) {
+    return postAttrs.tags.map((requestTag) => {
+        let tag = tags.find(requestTag.id);
+
+        if (!tag) {
+            tag = tag.create(requestTag);
+        }
+
+        return tag;
+    });
+}
 
 export default function mockPosts(server) {
-    server.post('/posts', function ({posts}) {
+    server.post('/posts', function ({posts, users, tags}) {
         let attrs = this.normalizedRequestAttrs();
 
-        // mirage expects `author` to be a reference but we only have an ID
-        attrs.authorId = attrs.author;
-        delete attrs.author;
+        attrs.authors = extractAuthors(attrs, users);
+        attrs.tags = extractTags(attrs, tags);
 
         if (isBlank(attrs.slug) && !isBlank(attrs.title)) {
             attrs.slug = dasherize(attrs.title);
@@ -18,29 +69,26 @@ export default function mockPosts(server) {
         return posts.create(attrs);
     });
 
-    // TODO: handle author filter
+    // TODO: handle authors filter
     server.get('/posts/', function ({posts}, {queryParams}) {
-        let page = +queryParams.page || 1;
-        let limit = +queryParams.limit || 15;
-        let {status, staticPages} = queryParams;
-        let query = {};
-        let models;
+        let {filter, page, limit} = queryParams;
 
-        if (status && status !== 'all') {
-            query.status = status;
-        }
+        page = +page || 1;
+        limit = +limit || 15;
 
-        if (staticPages === 'false') {
-            query.page = false;
-        }
+        let statusFilter = extractFilterParam('status', filter);
 
-        if (staticPages === 'true') {
-            query.page = true;
-        }
+        let collection = posts.all().filter((post) => {
+            let matchesStatus = true;
 
-        models = posts.where(query).models;
+            if (!isEmpty(statusFilter)) {
+                matchesStatus = statusFilter.includes(post.status);
+            }
 
-        return paginateModelArray('posts', models, page, limit);
+            return matchesStatus;
+        });
+
+        return paginateModelCollection('posts', collection, page, limit);
     });
 
     server.get('/posts/:id/', function ({posts}, {params}) {
@@ -49,23 +97,22 @@ export default function mockPosts(server) {
 
         return post || new Response(404, {}, {
             errors: [{
-                errorType: 'NotFoundError',
+                type: 'NotFoundError',
                 message: 'Post not found.'
             }]
         });
     });
 
-    // Handle embedded author in post
-    server.put('/posts/:id/', ({posts}, request) => {
-        let {posts: [post]} = JSON.parse(request.requestBody);
-        let {author} = post;
-        delete post.author;
+    server.put('/posts/:id/', function ({posts, users, tags}, {params}) {
+        let attrs = this.normalizedRequestAttrs();
+        let post = posts.find(params.id);
 
-        let savedPost = posts.find(request.params.id).update(post);
-        savedPost.authorId = author;
-        savedPost.save();
+        attrs.authors = extractAuthors(attrs, users);
+        attrs.tags = extractTags(attrs, tags);
 
-        return savedPost;
+        attrs.updatedAt = moment.utc().toDate();
+
+        return post.update(attrs);
     });
 
     server.del('/posts/:id/');

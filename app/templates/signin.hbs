@@ -1,56 +1,81 @@
 <div class="gh-flow">
     <div class="gh-flow-content-wrap">
         <section class="gh-flow-content">
+            {{#if this.passwordResetEmailSent}}
+                <div class="gh-auth-email">
+                    <div class="gh-auth-animation-container">
+                        <div class="gh-auth-email-animation">
+                            {{svg-jar "locked-email-back" class="gh-auth-envelope-back"}}
+                            {{svg-jar "locked-email-front" class="gh-auth-envelope-front"}}
+                            <div class="gh-auth-paper">
+                                {{svg-jar "locked-email-lock" class="gh-auth-lock"}}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="gh-auth-lock-body">
+                        <p>
+                            For security, you need to create a new password. An email has been sent to you with instructions!
+                        </p>
+                    </div>
+                </div>
+            {{else}}
             <form id="login" method="post" class="gh-signin" novalidate="novalidate" {{action "authenticate" on="submit"}}>
-                {{#gh-form-group errors=model.errors hasValidated=hasValidated property="identification"}}
+                <GhFormGroup @errors={{this.signin.errors}} @hasValidated={{this.hasValidated}} @property="identification">
                     <span class="gh-input-icon gh-icon-mail">
-                        {{inline-svg "email"}}
-                        {{gh-trim-focus-input model.identification
-                            class="email"
-                            type="email"
-                            placeholder="Email Address"
-                            name="identification"
-                            autocapitalize="off"
-                            autocorrect="off"
-                            tabindex="1"
-                            focusOut=(action "validate" "identification")
-                            update=(action (mut model.identification))}}
+                        {{svg-jar "email"}}
+                        <GhTrimFocusInput
+                            @class="email"
+                            @type="email"
+                            @placeholder="Email Address"
+                            @name="identification"
+                            @autocapitalize="off"
+                            @autocorrect="off"
+                            @autocomplete="username"
+                            @tabindex="1"
+                            @value={{readonly this.signin.identification}}
+                            @input={{action (mut this.signin.identification) value="target.value"}}
+                            @focus-out={{action "validate" "identification"}}
+                        />
                     </span>
-                {{/gh-form-group}}
-                {{#gh-form-group errors=model.errors hasValidated=hasValidated property="password"}}
+                </GhFormGroup>
+                <GhFormGroup @errors={{this.signin.errors}} @hasValidated={{this.hasValidated}} @property="password">
                     <span class="gh-input-icon gh-icon-lock forgotten-wrap">
-                        {{inline-svg "lock"}}
-                        {{gh-input model.password
-                            class="password"
-                            type="password"
-                            placeholder="Password"
-                            name="password"
-                            tabindex="2"
-                            autocorrect="off"
-                            update=(action (mut model.password))}}
+                        {{svg-jar "lock"}}
+                        <GhTextInput
+                            @class="password"
+                            @type="password"
+                            @placeholder="Password"
+                            @name="password"
+                            @tabindex="2"
+                            @autocomplete="current-password"
+                            @autocorrect="off"
+                            @value={{readonly this.signin.password}}
+                            @input={{action (mut this.signin.password) value="target.value"}} />
 
-                        {{#gh-task-button
-                            task=forgotten
-                            class="forgotten-link gh-btn gh-btn-link gh-btn-icon"
-                            tabindex="4"
-                            type="button"
-                            successClass=""
-                            failureClass=""
+                        <GhTaskButton
+                            @task={{this.forgotten}}
+                            @class="forgotten-link gh-btn gh-btn-link gh-btn-icon"
+                            @tabindex="4"
+                            @type="button"
+                            @successClass=""
+                            @failureClass=""
                             as |task|
-                        }}
-                            <span>{{#if task.isRunning}}{{inline-svg "spinner" class="gh-spinner"}}{{else}}Forgot?{{/if}}</span>
-                        {{/gh-task-button}}
+                        >
+                            <span>{{#if task.isRunning}}{{svg-jar "spinner" class="gh-spinner"}}{{else}}Forgot?{{/if}}</span>
+                        </GhTaskButton>
                     </span>
-                {{/gh-form-group}}
+                </GhFormGroup>
 
-                {{gh-task-button "Sign in"
-                    task=validateAndAuthenticate
-                    class="login gh-btn gh-btn-blue gh-btn-block gh-btn-icon"
-                    type="submit"
-                    tabindex="3"}}
+                <GhTaskButton @buttonText="Sign in"
+                    @task={{this.validateAndAuthenticate}}
+                    @showSuccess={{false}}
+                    @class="login gh-btn gh-btn-blue gh-btn-block gh-btn-icon"
+                    @type="submit"
+                    @tabindex="3" />
             </form>
 
-            <p class="main-error">{{{if flowErrors flowErrors "&nbsp;"}}}</p>
+            <p class="main-error">{{if this.flowErrors this.flowErrors}}&nbsp;</p>
+            {{/if}}
         </section>
     </div>
 </div>

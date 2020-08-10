@@ -1,7 +1,11 @@
 import TextField from '@ember/component/text-field';
-import {InvokeActionMixin} from 'ember-invoke-action';
+import validator from 'validator';
 import {computed} from '@ember/object';
 import {run} from '@ember/runloop';
+
+// URI is attached to the window global as part of the
+// google-caja html-css-sanitizer-bundle
+const {URI} = window;
 
 let joinUrlParts = function (url, path) {
     if (path[0] !== '/' && url.slice(-1) !== '/') {
@@ -19,31 +23,28 @@ let isRelative = function (url) {
     return !url.match(/\s/) && !validator.isURL(url) && !url.match(/^(\/\/|#|[a-zA-Z0-9-]+:)/);
 };
 
-export default TextField.extend(InvokeActionMixin, {
+export default TextField.extend({
     classNames: 'gh-input',
 
+    // Allowed actions
+    update() {},
+    clearErrors() {},
+
     isBaseUrl: computed('baseUrl', 'value', function () {
-        return this.get('baseUrl') === this.get('value');
+        return this.baseUrl === this.value;
     }),
 
     didReceiveAttrs() {
         this._super(...arguments);
-
-        let baseUrl = this.get('baseUrl');
-        let url = this.get('url');
-
-        // if we have a relative url, create the absolute url to be displayed in the input
-        if (isRelative(url)) {
-            url = joinUrlParts(baseUrl, url);
-        }
-
-        this.set('value', url);
+        // value coming is likely to be relative but we always want to show
+        // absolute urls in the input fields
+        this.set('value', this._makeAbsoluteUrl(this.url));
     },
 
     focusIn(event) {
         this.set('hasFocus', true);
 
-        if (this.get('isBaseUrl')) {
+        if (this.isBaseUrl) {
             // position the cursor at the end of the input
             run.next(function (el) {
                 let {length} = el.value;
@@ -55,7 +56,7 @@ export default TextField.extend(InvokeActionMixin, {
 
     keyDown(event) {
         // delete the "placeholder" value all at once
-        if (this.get('isBaseUrl') && (event.keyCode === 8 || event.keyCode === 46)) {
+        if (this.isBaseUrl && (event.keyCode === 8 || event.keyCode === 46)) {
             this.set('value', '');
 
             event.preventDefault();
@@ -68,7 +69,7 @@ export default TextField.extend(InvokeActionMixin, {
     },
 
     keyPress(event) {
-        this.invokeAction('clearErrors');
+        this.clearErrors();
 
         // enter key
         if (event.keyCode === 13) {
@@ -85,53 +86,58 @@ export default TextField.extend(InvokeActionMixin, {
     },
 
     notifyUrlChanged() {
-        let url = this.get('value').trim();
-        let urlParts = document.createElement('a');
-        let baseUrl = this.get('baseUrl');
-        let baseUrlParts = document.createElement('a');
+        let url = this.value.trim();
+        let urlURI = URI.parse(url);
+        let baseUrl = this.baseUrl;
+        let baseURI = URI.parse(baseUrl);
+
+        function getHost(uri) {
+            let host = uri.getDomain();
+
+            if (uri.getPort()) {
+                host = `${host}:${uri.getPort()}`;
+            }
+
+            return host;
+        }
+
+        let urlHost = getHost(urlURI);
+        let baseHost = getHost(baseURI);
 
         // ensure value property is trimmed
         this.set('value', url);
 
-        // leverage the browser's native URI parsing
-        urlParts.href = url;
-        baseUrlParts.href = baseUrl;
-
         // if we have an email address, add the mailto:
         if (validator.isEmail(url)) {
-            url = `mailto:${url}`;
+            url = this.update(`mailto:${url}`);
             this.set('value', url);
-        }
-
-        // if we have a relative url, create the absolute url to be displayed in the input
-        if (isRelative(url)) {
-            url = joinUrlParts(baseUrl, url);
-            this.set('value', url);
+            return;
         }
 
         // get our baseUrl relativity checks in order
-        let isOnSameHost = urlParts.host === baseUrlParts.host;
         let isAnchorLink = url.match(/^#/);
-        let isRelativeToBasePath = urlParts.pathname.indexOf(baseUrlParts.pathname) === 0;
+        let isRelativeToBasePath = urlURI.getPath() && urlURI.getPath().indexOf(baseURI.getPath()) === 0;
 
-        // if our pathname is only missing a trailing / mark it as relative
-        if (`${urlParts.pathname}/` === baseUrlParts.pathname) {
+        // if our path is only missing a trailing / mark it as relative
+        if (`${urlURI.getPath()}/` === baseURI.getPath()) {
             isRelativeToBasePath = true;
         }
+
+        let isOnSameHost = urlHost === baseHost || (!urlHost && isRelativeToBasePath);
 
         // if relative to baseUrl, remove the base url before sending to action
         if (!isAnchorLink && isOnSameHost && isRelativeToBasePath) {
             url = url.replace(/^[a-zA-Z0-9-]+:/, '');
             url = url.replace(/^\/\//, '');
-            url = url.replace(baseUrlParts.host, '');
-            url = url.replace(baseUrlParts.pathname, '');
+            url = url.replace(baseHost, '');
+            url = url.replace(baseURI.getPath(), '');
 
             // handle case where url path is same as baseUrl path but missing trailing slash
-            if (urlParts.pathname.slice(-1) !== '/') {
-                url = url.replace(baseUrlParts.pathname.slice(0, -1), '');
+            if (urlURI.getPath().slice(-1) !== '/') {
+                url = url.replace(baseURI.getPath().slice(0, -1), '');
             }
 
-            if (url !== '' || !this.get('isNew')) {
+            if (url !== '' || !this.isNew) {
                 if (!url.match(/^\//)) {
                     url = `/${url}`;
                 }
@@ -142,6 +148,19 @@ export default TextField.extend(InvokeActionMixin, {
             }
         }
 
-        this.sendAction('change', url);
+        // we update with the relative URL but then transform it back to absolute
+        // for the input value. This avoids problems where the underlying relative
+        // value hasn't changed even though the input value has
+        if (url.match(/^(\/\/|#|[a-zA-Z0-9-]+:)/) || validator.isURL(url) || validator.isURL(`${baseHost}${url}`)) {
+            url = this.update(url);
+            this.set('value', this._makeAbsoluteUrl(url));
+        }
+    },
+
+    _makeAbsoluteUrl(url) {
+        if (isRelative(url)) {
+            url = joinUrlParts(this.baseUrl, url);
+        }
+        return url;
     }
 });

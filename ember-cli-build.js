@@ -4,23 +4,27 @@
 const EmberApp = require('ember-cli/lib/broccoli/ember-app');
 const concat = require('broccoli-concat');
 const mergeTrees = require('broccoli-merge-trees');
-const uglify = require('broccoli-uglify-js');
-const CleanCSS = require('broccoli-clean-css');
+const uglify = require('broccoli-uglify-sourcemap');
+const Funnel = require('broccoli-funnel');
 const environment = EmberApp.env();
 const isProduction = environment === 'production';
-let assetLocation, codemirrorAssets;
 
-assetLocation = function (fileName) {
+const postcssEasyImport = require('postcss-easy-import');
+const postcssCustomProperties = require('postcss-custom-properties');
+const postcssColorModFunction = require('postcss-color-mod-function');
+const postcssCustomMedia = require('postcss-custom-media');
+const autoprefixer = require('autoprefixer');
+const cssnano = require('cssnano');
+
+const assetLocation = function (fileName) {
     if (isProduction) {
         fileName = fileName.replace('.', '.min.');
     }
     return `/assets/${fileName}`;
 };
 
-codemirrorAssets = function () {
+const codemirrorAssets = function () {
     let codemirrorFiles = [
-        // 'lib/codemirror.css',
-        'theme/xq-light.css',
         'lib/codemirror.js',
         'mode/htmlmixed/htmlmixed.js',
         'mode/xml/xml.js',
@@ -45,69 +49,75 @@ codemirrorAssets = function () {
                 sourceMapConfig: {enabled: false}
             });
 
-            let cssTree = concat(tree, {
-                outputFile: 'assets/codemirror/codemirror.css',
-                inputFiles: ['**/*.css']
-            });
-
             if (isProduction) {
                 jsTree = uglify(jsTree);
-                cssTree = new CleanCSS(cssTree);
             }
 
-            return mergeTrees([tree, jsTree, cssTree]);
+            let mergedTree = mergeTrees([tree, jsTree]);
+            return new Funnel(mergedTree, {include: ['assets/**/*', 'theme/**/*']});
         }
     };
 
     // put the files in vendor ready for importing into the test-support file
     if (environment === 'development') {
-        config.vendor =  codemirrorFiles;
+        config.vendor = codemirrorFiles;
     }
 
     return config;
 };
 
-function postcssPlugins() {
-    let plugins = [{
-        module: require('postcss-easy-import')
-    }, {
-        module: require('postcss-custom-properties')
-    }, {
-        module: require('postcss-color-function')
-    }, {
-        module: require('autoprefixer'),
-        options: {
-            browsers: ['last 2 versions']
-        }
-    }];
+const simplemdeAssets = function () {
+    let simplemdeFiles = [
+        'debug/simplemde.js'
+    ];
 
-    if (isProduction) {
-        plugins.push({
-            module: require('cssnano'),
-            // cssnano minifies animations sometimes wrong, so they don't work anymore.
-            // See: https://github.com/ben-eb/gulp-cssnano/issues/33#issuecomment-210518957
-            options: {
-                reduceIdents: {
-                    keyframes: false
-                },
-                discardUnused: {
-                    keyframes: false
-                }
-            }
-        });
+    if (environment === 'test') {
+        return {import: simplemdeFiles};
     }
 
-    return plugins;
+    let config = {};
+
+    config.public = {
+        include: simplemdeFiles,
+        destDir: '/',
+        processTree(tree) {
+            let jsTree = concat(tree, {
+                outputFile: 'assets/simplemde/simplemde.js',
+                inputFiles: ['debug/simplemde.js'],
+                sourceMapConfig: {enabled: false}
+            });
+
+            if (isProduction) {
+                jsTree = uglify(jsTree);
+            }
+
+            let mergedTree = mergeTrees([tree, jsTree]);
+            return new Funnel(mergedTree, {include: ['assets/**/*']});
+        }
+    };
+
+    // put the files in vendor ready for importing into the test-support file
+    if (environment === 'development') {
+        config.vendor = simplemdeFiles;
+    }
+
+    return config;
+};
+
+let blacklist = [];
+if (process.env.CI) {
+    blacklist.push('ember-cli-eslint');
 }
 
 module.exports = function (defaults) {
     let app = new EmberApp(defaults, {
+        addons: {blacklist},
         'ember-cli-babel': {
             optional: ['es6.spec.symbols'],
-            includePolyfill: true
+            includePolyfill: false
         },
         'ember-composable-helpers': {
-            only: ['toggle']
+            only: ['optional', 'toggle']
         },
         outputPaths: {
             app: {
@@ -120,45 +130,82 @@ module.exports = function (defaults) {
                 }
             },
             vendor: {
-                js:  assetLocation('vendor.js'),
+                js: assetLocation('vendor.js'),
                 css: assetLocation('vendor.css')
             }
+        },
+        fingerprint: {
+            enabled: isProduction,
+            extensions: ['js', 'css', 'png', 'jpg', 'jpeg', 'gif', 'map']
+        },
+        minifyJS: {
+            options: {
+                output: {
+                    semicolons: true
+                }
+            }
+        },
+        minifyCSS: {
+            // postcss already handles minification and this was stripping required CSS
+            enabled: false
+        },
+        nodeAssets: {
+            codemirror: codemirrorAssets(),
+            simplemde: simplemdeAssets()
         },
         postcssOptions: {
             compile: {
                 enabled: true,
-                plugins: postcssPlugins()
-            }
-        },
-        fingerprint: {
-            enabled: true,
-            extensions: ['js', 'css', 'png', 'jpg', 'jpeg', 'gif', 'map']
-        },
-        nodeAssets: {
-            'blueimp-md5': {
-                import: ['js/md5.js']
-            },
-            codemirror: codemirrorAssets(),
-            'jquery-deparam': {
-                import: ['jquery-deparam.js']
-            },
-            'password-generator': {
-                import: ['lib/password-generator.js']
-            },
-            'simplemde': {
-                srcDir: 'debug',
-                import: ['simplemde.js', 'simplemde.css']
-            }
-        },
-        'ember-cli-selectize': {
-            theme: false
-        },
-        svg: {
-            paths: [
-                'public/assets/icons'
-            ],
-            optimize: {
                 plugins: [
+                    {
+                        module: postcssEasyImport,
+                        options: {
+                            path: ['app/styles']
+                        }
+                    },
+                    {
+                        module: postcssCustomProperties,
+                        options: {
+                            preserve: false
+                        }
+                    },
+                    {
+                        module: postcssColorModFunction
+                    },
+                    {
+                        module: postcssCustomMedia
+                    },
+                    {
+                        module: autoprefixer
+                    },
+                    {
+                        module: cssnano,
+                        options: {
+                            zindex: false,
+                            // cssnano sometimes minifies animations incorrectly causing them to break
+                            // See: https://github.com/ben-eb/gulp-cssnano/issues/33#issuecomment-210518957
+                            reduceIdents: {
+                                keyframes: false
+                            },
+                            discardUnused: {
+                                keyframes: false
+                            }
+                        }
+                    }
+                ]
+            }
+        },
+        svgJar: {
+            strategy: 'inline',
+            stripPath: false,
+            sourceDirs: [
+                'public/assets/icons',
+                'lib/koenig-editor/public/icons'
+            ],
+            optimizer: {
+                plugins: [
+                    {prefixIds: true},
+                    {cleanupIds: false},
                     {removeDimensions: true},
                     {removeTitle: true},
                     {removeXMLNS: true},
@@ -173,30 +220,28 @@ module.exports = function (defaults) {
         }
     });
 
+    // Stop: Normalize
+    app.import('node_modules/normalize.css/normalize.css');
+
+    // 'dem Styles
+    // import codemirror + simplemde styles rather than lazy-loading so that
+    // our overrides work correctly
+    app.import('node_modules/codemirror/lib/codemirror.css');
+    app.import('node_modules/codemirror/theme/xq-light.css');
+    app.import('node_modules/simplemde/dist/simplemde.min.css');
+
     // 'dem Scripts
-    app.import('bower_components/validator-js/validator.js');
-    app.import('bower_components/rangyinputs/rangyinputs-jquery-src.js');
-    app.import('bower_components/keymaster/keymaster.js');
-    app.import('bower_components/devicejs/lib/device.js');
-
-    // jquery-ui partial build
-    app.import('bower_components/jquery-ui/ui/core.js');
-    app.import('bower_components/jquery-ui/ui/widget.js');
-    app.import('bower_components/jquery-ui/ui/mouse.js');
-    app.import('bower_components/jquery-ui/ui/draggable.js');
-    app.import('bower_components/jquery-ui/ui/droppable.js');
-    app.import('bower_components/jquery-ui/ui/sortable.js');
-    app.import('bower_components/google-caja/html-css-sanitizer-bundle.js');
-    app.import('bower_components/jqueryui-touch-punch/jquery.ui.touch-punch.js');
-
-    if (app.env !== 'production') {
-        app.import(`${app.bowerDirectory}/jquery.simulate.drag-sortable/jquery.simulate.drag-sortable.js`, {type: 'test'});
-    }
+    app.import('node_modules/google-caja-bower/html-css-sanitizer-bundle.js');
+    app.import('node_modules/keymaster/keymaster.js');
+    app.import('node_modules/@tryghost/mobiledoc-kit/dist/amd/mobiledoc-kit.js');
+    app.import('node_modules/@tryghost/mobiledoc-kit/dist/amd/mobiledoc-kit.map');
+    app.import('node_modules/reframe.js/dist/noframe.js');
 
     // pull things we rely on via lazy-loading into the test-support.js file so
     // that tests don't break when running via http://localhost:4200/tests
     if (app.env === 'development') {
         app.import('vendor/codemirror/lib/codemirror.js', {type: 'test'});
+        app.import('vendor/simplemde/debug/simplemde.js', {type: 'test'});
     }
 
     return app.toTree();

@@ -1,170 +1,124 @@
 import Controller from '@ember/controller';
-import RSVP from 'rsvp';
-import ValidationEngine from 'ghost-admin/mixins/validation-engine';
+import {alias} from '@ember/object/computed';
+import {get} from '@ember/object';
+import {isArray as isEmberArray} from '@ember/array';
 import {
-    VersionMismatchError,
     isVersionMismatchError
 } from 'ghost-admin/services/ajax';
-import {inject as injectService} from '@ember/service';
-import {isArray as isEmberArray} from '@ember/array';
+import {inject as service} from '@ember/service';
 import {task} from 'ember-concurrency';
 
-export default Controller.extend(ValidationEngine, {
-    ajax: injectService(),
-    config: injectService(),
-    ghostPaths: injectService(),
-    notifications: injectService(),
-    session: injectService(),
-    settings: injectService(),
-
-    // ValidationEngine settings
-    validationType: 'signup',
+export default Controller.extend({
+    ajax: service(),
+    config: service(),
+    ghostPaths: service(),
+    notifications: service(),
+    session: service(),
+    settings: service(),
 
     flowErrors: '',
     profileImage: null,
 
-    authenticate: task(function* (authStrategy, authentication) {
-        try {
-            let authResult = yield this.get('session')
-                .authenticate(authStrategy, ...authentication);
-            let promises = [];
+    signupDetails: alias('model'),
 
-            promises.pushObject(this.get('settings').fetch());
-            promises.pushObject(this.get('config').fetchPrivate());
+    actions: {
+        validate(property) {
+            return this.signupDetails.validate({property});
+        },
 
-            // fetch settings and private config for synchronous access
-            yield RSVP.all(promises);
+        setImage(image) {
+            this.set('profileImage', image);
+        },
 
-            return authResult;
-
-        } catch (error) {
-            if (error && error.errors) {
-                // we don't get back an ember-data/ember-ajax error object
-                // back so we need to pass in a null status in order to
-                // test against the payload
-                if (isVersionMismatchError(null, error)) {
-                    let versionMismatchError = new VersionMismatchError(error);
-                    return this.get('notifications').showAPIError(versionMismatchError);
-                }
-
-                error.errors.forEach((err) => {
-                    err.message = err.message.htmlSafe();
-                });
-
-                this.set('flowErrors', error.errors[0].message.string);
-
-                if (error.errors[0].message.string.match(/user with that email/)) {
-                    this.get('model.errors').add('identification', '');
-                }
-
-                if (error.errors[0].message.string.match(/password is incorrect/)) {
-                    this.get('model.errors').add('password', '');
-                }
-            } else {
-                // Connection errors don't return proper status message, only req.body
-                this.get('notifications').showAlert('There was a problem on the server.', {type: 'error', key: 'session.authenticate.failed'});
-                throw error;
-            }
+        submit(event) {
+            event.preventDefault();
+            this.signup.perform();
         }
-    }).drop(),
+    },
 
     signup: task(function* () {
         let setupProperties = ['name', 'email', 'password', 'token'];
-        let notifications = this.get('notifications');
+        let notifications = this.notifications;
 
         this.set('flowErrors', '');
-        this.get('hasValidated').addObjects(setupProperties);
+        this.get('signupDetails.hasValidated').addObjects(setupProperties);
 
         try {
-            yield this.validate();
+            yield this.signupDetails.validate();
             yield this._completeInvitation();
 
             try {
                 yield this._authenticateWithPassword();
-                yield this._sendImage();
+                yield this._sendImage.perform();
             } catch (error) {
                 notifications.showAPIError(error, {key: 'signup.complete'});
             }
-
         } catch (error) {
             // ValidationEngine throws undefined
             if (!error) {
                 this.set('flowErrors', 'Please fill out the form to complete your sign-up');
+                return false;
             }
 
-            if (error && error.errors && isEmberArray(error.errors)) {
+            if (error && error.payload && error.payload.errors && isEmberArray(error.payload.errors)) {
                 if (isVersionMismatchError(error)) {
                     notifications.showAPIError(error);
                 }
-                this.set('flowErrors', error.errors[0].message);
+                this.set('flowErrors', error.payload.errors[0].message);
             } else {
                 notifications.showAPIError(error, {key: 'signup.complete'});
             }
         }
-    }),
+    }).drop(),
 
     _completeInvitation() {
         let authUrl = this.get('ghostPaths.url').api('authentication', 'invitation');
-        let model = this.get('model');
+        let signupDetails = this.signupDetails;
 
-        return this.get('ajax').post(authUrl, {
+        return this.ajax.post(authUrl, {
             dataType: 'json',
             data: {
                 invitation: [{
-                    name: model.get('name'),
-                    email: model.get('email'),
-                    password: model.get('password'),
-                    token: model.get('token')
+                    name: signupDetails.get('name'),
+                    email: signupDetails.get('email'),
+                    password: signupDetails.get('password'),
+                    token: signupDetails.get('token')
                 }]
             }
         });
     },
 
     _authenticateWithPassword() {
-        let email = this.get('model.email');
-        let password = this.get('model.password');
+        let email = this.get('signupDetails.email');
+        let password = this.get('signupDetails.password');
 
-        return this.get('session')
-            .authenticate('authenticator:oauth2', email, password);
+        return this.session
+            .authenticate('authenticator:cookie', email, password);
     },
 
-    _sendImage() {
+    _sendImage: task(function* () {
         let formData = new FormData();
-        let imageFile = this.get('profileImage');
-        let uploadUrl = this.get('ghostPaths.url').api('uploads');
+        let imageFile = this.profileImage;
+        let uploadUrl = this.get('ghostPaths.url').api('images', 'upload');
 
         if (imageFile) {
-            formData.append('uploadimage', imageFile, imageFile.name);
+            formData.append('file', imageFile, imageFile.name);
+            formData.append('purpose', 'profile_image');
 
-            return this.get('session.user').then((user) => {
-                return this.get('ajax').post(uploadUrl, {
-                    data: formData,
-                    processData: false,
-                    contentType: false,
-                    dataType: 'text'
-                }).then((response) => {
-                    let imageUrl = JSON.parse(response);
-                    let usersUrl = this.get('ghostPaths.url').api('users', user.id.toString());
-                    // eslint-disable-next-line
-                    user.profile_image = imageUrl;
-
-                    return this.get('ajax').put(usersUrl, {
-                        data: {
-                            users: [user]
-                        }
-                    });
-                });
+            let user = yield this.get('session.user');
+            let response = yield this.ajax.post(uploadUrl, {
+                data: formData,
+                processData: false,
+                contentType: false,
+                dataType: 'text'
             });
-        }
-    },
 
-    actions: {
-        signup() {
-            this.get('signup').perform();
-        },
+            let [image] = get(JSON.parse(response), 'images');
+            let imageUrl = image.url;
 
-        setImage(image) {
-            this.set('profileImage', image);
+            user.set('profileImage', imageUrl);
+
+            return yield user.save();
         }
-    }
+    })
 });

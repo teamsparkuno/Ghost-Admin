@@ -1,31 +1,25 @@
-import EmberObject from '@ember/object';
 import {describe, it} from 'mocha';
+import {expect} from 'chai';
 import {run} from '@ember/runloop';
-import {setupModelTest} from 'ember-mocha';
+import {setupTest} from 'ember-mocha';
 
 describe('Unit: Model: post', function () {
-    setupModelTest('post', {
-        needs: [
-            'model:user',
-            'model:tag',
-            'model:role',
-            'service:clock',
-            'service:config',
-            'service:feature',
-            'service:ghostPaths',
-            'service:session',
-            'service:settings'
-        ]
+    setupTest();
+
+    let store;
+
+    beforeEach(function () {
+        store = this.owner.lookup('service:store');
     });
 
     it('has a validation type of "post"', function () {
-        let model = this.subject();
+        let model = store.createRecord('post');
 
         expect(model.validationType).to.equal('post');
     });
 
     it('isPublished, isDraft and isScheduled are correct', function () {
-        let model = this.subject({
+        let model = store.createRecord('post', {
             status: 'published'
         });
 
@@ -51,28 +45,30 @@ describe('Unit: Model: post', function () {
     });
 
     it('isAuthoredByUser is correct', function () {
-        let model = this.subject({
-            authorId: 'abcd1234'
-        });
-        let user = EmberObject.create({id: 'abcd1234'});
+        let user1 = store.createRecord('user', {id: 'abcd1234'});
+        let user2 = store.createRecord('user', {id: 'wxyz9876'});
 
-        expect(model.isAuthoredByUser(user)).to.be.ok;
+        let model = store.createRecord('post', {
+            authors: [user1]
+        });
+
+        expect(model.isAuthoredByUser(user1)).to.be.ok;
 
         run(function () {
-            model.set('authorId', 'wxyz9876');
+            model.set('authors', [user2]);
 
-            expect(model.isAuthoredByUser(user)).to.not.be.ok;
+            expect(model.isAuthoredByUser(user1)).to.not.be.ok;
         });
     });
 
     it('updateTags removes and deletes old tags', function () {
-        let model = this.subject();
+        let model = store.createRecord('post');
 
         run(this, function () {
             let modelTags = model.get('tags');
-            let tag1 = this.store().createRecord('tag', {id: '1'});
-            let tag2 = this.store().createRecord('tag', {id: '2'});
-            let tag3 = this.store().createRecord('tag');
+            let tag1 = store.createRecord('tag', {id: '1'});
+            let tag2 = store.createRecord('tag', {id: '2'});
+            let tag3 = store.createRecord('tag');
 
             // During testing a record created without an explicit id will get
             // an id of 'fixture-n' instead of null

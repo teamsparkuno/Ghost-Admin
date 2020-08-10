@@ -1,9 +1,9 @@
 import Component from '@ember/component';
 import {computed} from '@ember/object';
-import {inject as injectService} from '@ember/service';
 import {isBlank} from '@ember/utils';
 import {reads} from '@ember/object/computed';
 import {run} from '@ember/runloop';
+import {inject as service} from '@ember/service';
 
 let instancesCounter = 0;
 
@@ -13,7 +13,7 @@ let triangleClassPositions = {
         targetAttachment: 'bottom center',
         offset: '0 28px'
     },
-    'top': {
+    top: {
         attachment: 'top center',
         targetAttachment: 'bottom center'
     },
@@ -27,7 +27,7 @@ let triangleClassPositions = {
         targetAttachment: 'middle left',
         offset: '28px 0'
     },
-    'right': {
+    right: {
         attachment: 'middle right',
         targetAttachment: 'middle left'
     },
@@ -41,7 +41,7 @@ let triangleClassPositions = {
         targetAttachment: 'top center',
         offset: '0 -28px'
     },
-    'bottom': {
+    bottom: {
         attachment: 'bottom center',
         targetAttachment: 'top center'
     },
@@ -55,7 +55,7 @@ let triangleClassPositions = {
         targetAttachment: 'middle right',
         offset: '-28px 0'
     },
-    'left': {
+    left: {
         attachment: 'middle left',
         targetAttachment: 'middle right'
     },
@@ -68,8 +68,8 @@ let triangleClassPositions = {
 
 const GhTourItemComponent = Component.extend({
 
-    mediaQueries: injectService(),
-    tour: injectService(),
+    mediaQueries: service(),
+    tour: service(),
 
     tagName: '',
 
@@ -89,8 +89,8 @@ const GhTourItemComponent = Component.extend({
 
     isMobile: reads('mediaQueries.isMobile'),
     isVisible: computed('isMobile', '_throbber', function () {
-        let isMobile = this.get('isMobile');
-        let hasThrobber = !isBlank(this.get('_throbber'));
+        let isMobile = this.isMobile;
+        let hasThrobber = !isBlank(this._throbber);
 
         return !isMobile && hasThrobber;
     }),
@@ -98,21 +98,21 @@ const GhTourItemComponent = Component.extend({
     init() {
         this._super(...arguments);
         // this is a tagless component so we need to generate our own elementId
-        this._elementId = instancesCounter++;
+        this._elementId = instancesCounter += 1;
         this._throbberElementId = `throbber-${this._elementId}`;
         this._throbberElementSelector = `#throbber-${this._elementId}`;
 
         this._handleOptOut = run.bind(this, this._remove);
         this._handleViewed = run.bind(this, this._removeIfViewed);
 
-        this.get('tour').on('optOut', this._handleOptOut);
-        this.get('tour').on('viewed', this._handleViewed);
+        this.tour.on('optOut', this._handleOptOut);
+        this.tour.on('viewed', this._handleViewed);
     },
 
     didReceiveAttrs() {
-        let throbberId = this.get('throbberId');
-        let throbber = this.get('tour').activeThrobber(throbberId);
-        let triangleClass = this.get('popoverTriangleClass');
+        let throbberId = this.throbberId;
+        let throbber = this.tour.activeThrobber(throbberId);
+        let triangleClass = this.popoverTriangleClass;
         let popoverPositions = triangleClassPositions[triangleClass];
 
         this._throbber = throbber;
@@ -122,23 +122,9 @@ const GhTourItemComponent = Component.extend({
     },
 
     willDestroyElement() {
-        this.get('tour').off('optOut', this._handleOptOut);
-        this.get('tour').off('viewed', this._handleViewed);
+        this.tour.off('optOut', this._handleOptOut);
+        this.tour.off('viewed', this._handleViewed);
         this._super(...arguments);
-    },
-
-    _removeIfViewed(id) {
-        if (id === this.get('throbberId')) {
-            this._remove();
-        }
-    },
-
-    _remove() {
-        this.set('_throbber', null);
-    },
-
-    _close() {
-        this.set('isOpen', false);
     },
 
     actions: {
@@ -151,22 +137,32 @@ const GhTourItemComponent = Component.extend({
         },
 
         markAsViewed() {
-            let throbberId = this.get('throbberId');
-            this.get('tour').markThrobberAsViewed(throbberId);
+            let throbberId = this.throbberId;
+            this.tour.markThrobberAsViewed(throbberId);
             this.set('_throbber', null);
             this._close();
         },
 
         optOut() {
-            this.get('tour').optOut();
+            this.tour.optOut();
             this.set('_throbber', null);
             this._close();
         }
-    }
-});
+    },
 
-GhTourItemComponent.reopenClass({
-    positionalParams: ['throbberId']
+    _removeIfViewed(id) {
+        if (id === this.throbberId) {
+            this._remove();
+        }
+    },
+
+    _remove() {
+        this.set('_throbber', null);
+    },
+
+    _close() {
+        this.set('isOpen', false);
+    }
 });
 
 export default GhTourItemComponent;

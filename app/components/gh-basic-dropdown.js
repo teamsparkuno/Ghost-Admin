@@ -1,19 +1,17 @@
 import BasicDropdown from 'ember-basic-dropdown/components/basic-dropdown';
-import layout from 'ember-basic-dropdown/templates/components/basic-dropdown';
-import {inject as injectService} from '@ember/service';
+import {inject as service} from '@ember/service';
 
-export default BasicDropdown.extend({
-    dropdown: injectService(),
+class GhBasicDropdown extends BasicDropdown {
+    @service dropdown
 
-    layout,
-
-    didInsertElement() {
-        this._super(...arguments);
-        this.get('dropdown').on('close', this, this.close);
-    },
-
-    willDestroyElement() {
-        this._super(...arguments);
-        this.get('dropdown').off('close');
+    constructor() {
+        super(...arguments);
+        this.dropdown.on('close', this, this.close);
     }
-});
+
+    willDestroy() {
+        this.dropdown.off('close', this, this.close);
+    }
+}
+
+export default GhBasicDropdown;

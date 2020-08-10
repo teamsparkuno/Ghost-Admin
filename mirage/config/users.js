@@ -1,9 +1,18 @@
-import {paginateModelArray} from '../utils';
+import {Response} from 'ember-cli-mirage';
+import {paginateModelCollection} from '../utils';
 
 export default function mockUsers(server) {
     // /users/me = Always return the user with ID=1
     server.get('/users/me/', function ({users}) {
-        return users.find(1);
+        let user = users.find(1);
+
+        if (user) {
+            return user;
+        } else {
+            return new Response(404, {}, {errors: [
+                {message: 'Not found', type: 'NotFoundError'}
+            ]});
+        }
     });
 
     server.get('/users/', function ({users}, {queryParams}) {
@@ -11,7 +20,7 @@ export default function mockUsers(server) {
 
         // NOTE: this is naive and only set up to work with queries that are
         // actually used - if you use a different filter in the app, add it here!
-        let {models} = users.where(function (user) {
+        let collection = users.where(function (user) {
             let statusMatch = true;
 
             if (queryParams.filter === 'status:-inactive') {
@@ -25,7 +34,7 @@ export default function mockUsers(server) {
             return statusMatch;
         });
 
-        return paginateModelArray('users', models, page, queryParams.limit);
+        return paginateModelCollection('users', collection, page, queryParams.limit);
     });
 
     server.get('/users/slug/:slug/', function ({users}, {params, queryParams}) {

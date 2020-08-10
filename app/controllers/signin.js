@@ -1,77 +1,87 @@
 import $ from 'jquery';
-import Controller from '@ember/controller';
-import RSVP from 'rsvp';
+import Controller, {inject as controller} from '@ember/controller';
 import ValidationEngine from 'ghost-admin/mixins/validation-engine';
-import {inject as injectController} from '@ember/controller';
-import {inject as injectService} from '@ember/service';
+import {alias} from '@ember/object/computed';
 import {isArray as isEmberArray} from '@ember/array';
 import {isVersionMismatchError} from 'ghost-admin/services/ajax';
+import {inject as service} from '@ember/service';
 import {task} from 'ember-concurrency';
 
 export default Controller.extend(ValidationEngine, {
+    application: controller(),
+    ajax: service(),
+    config: service(),
+    ghostPaths: service(),
+    notifications: service(),
+    session: service(),
+    settings: service(),
+
     submitting: false,
     loggingIn: false,
-    authProperties: ['identification', 'password'],
-
-    ajax: injectService(),
-    application: injectController(),
-    config: injectService(),
-    ghostPaths: injectService(),
-    notifications: injectService(),
-    session: injectService(),
-    settings: injectService(),
+    authProperties: null,
 
     flowErrors: '',
+    passwordResetEmailSent: false,
 
     // ValidationEngine settings
     validationType: 'signin',
 
+    init() {
+        this._super(...arguments);
+        this.authProperties = ['identification', 'password'];
+    },
+
+    signin: alias('model'),
+
+    actions: {
+        authenticate() {
+            return this.validateAndAuthenticate.perform();
+        }
+    },
+
     authenticate: task(function* (authStrategy, authentication) {
         try {
-            let authResult = yield this.get('session')
-                .authenticate(authStrategy, ...authentication);
-            let promises = [];
-
-            promises.pushObject(this.get('settings').fetch());
-            promises.pushObject(this.get('config').fetchPrivate());
-
-            // fetch settings and private config for synchronous access
-            yield RSVP.all(promises);
-
-            return authResult;
-
+            return yield this.session
+                .authenticate(authStrategy, ...authentication)
+                .then(() => true); // ensure task button transitions to "success" state
         } catch (error) {
-            if (error && error.errors) {
-                // we don't get back an ember-data/ember-ajax error object
-                // back so we need to pass in a null status in order to
-                // test against the payload
-                if (isVersionMismatchError(error)) {
-                    return this.get('notifications').showAPIError(error);
+            if (isVersionMismatchError(error)) {
+                return this.notifications.showAPIError(error);
+            }
+
+            if (error && error.payload && error.payload.errors) {
+                let [mainError] = error.payload.errors;
+
+                mainError.message = (mainError.message || '').htmlSafe();
+                mainError.context = (mainError.context || '').htmlSafe();
+
+                this.set('flowErrors', (mainError.context.string || mainError.message.string));
+
+                if (mainError.type === 'PasswordResetRequiredError') {
+                    this.set('passwordResetEmailSent', true);
                 }
 
-                error.errors.forEach((err) => {
-                    err.message = err.message.htmlSafe();
-                });
-
-                this.set('flowErrors', error.errors[0].message.string);
-
-                if (error.errors[0].message.string.match(/user with that email/)) {
-                    this.get('model.errors').add('identification', '');
+                if (mainError.context.string.match(/user with that email/i)) {
+                    this.get('signin.errors').add('identification', '');
                 }
 
-                if (error.errors[0].message.string.match(/password is incorrect/)) {
-                    this.get('model.errors').add('password', '');
+                if (mainError.context.string.match(/password is incorrect/i)) {
+                    this.get('signin.errors').add('password', '');
                 }
             } else {
+                console.error(error); // eslint-disable-line no-console
                 // Connection errors don't return proper status message, only req.body
-                this.get('notifications').showAlert('There was a problem on the server.', {type: 'error', key: 'session.authenticate.failed'});
+                this.notifications.showAlert(
+                    'There was a problem on the server.',
+                    {type: 'error', key: 'session.authenticate.failed'}
+                );
             }
         }
     }).drop(),
 
     validateAndAuthenticate: task(function* () {
-        let model = this.get('model');
-        let authStrategy = 'authenticator:oauth2';
+        let signin = this.signin;
+        let authStrategy = 'authenticator:cookie';
 
         this.set('flowErrors', '');
         // Manually trigger events for input fields, ensuring legacy compatibility with
@@ -79,36 +89,35 @@ export default Controller.extend(ValidationEngine, {
         $('#login').find('input').trigger('change');
 
         // This is a bit dirty, but there's no other way to ensure the properties are set as well as 'signin'
-        this.get('hasValidated').addObjects(this.authProperties);
+        this.hasValidated.addObjects(this.authProperties);
 
         try {
             yield this.validate({property: 'signin'});
-            return yield this.get('authenticate')
-                .perform(authStrategy, [model.get('identification'), model.get('password')]);
-
+            return yield this.authenticate
+                .perform(authStrategy, [signin.get('identification'), signin.get('password')])
+                .then(() => true);
         } catch (error) {
             this.set('flowErrors', 'Please fill out the form to sign in.');
         }
     }).drop(),
 
     forgotten: task(function* () {
-        let email = this.get('model.identification');
+        let email = this.get('signin.identification');
         let forgottenUrl = this.get('ghostPaths.url').api('authentication', 'passwordreset');
-        let notifications = this.get('notifications');
+        let notifications = this.notifications;
 
         this.set('flowErrors', '');
         // This is a bit dirty, but there's no other way to ensure the properties are set as well as 'forgotPassword'
-        this.get('hasValidated').addObject('identification');
+        this.hasValidated.addObject('identification');
 
         try {
             yield this.validate({property: 'forgotPassword'});
-            yield this.get('ajax').post(forgottenUrl, {data: {passwordreset: [{email}]}});
+            yield this.ajax.post(forgottenUrl, {data: {passwordreset: [{email}]}});
             notifications.showAlert(
                 'Please check your email for instructions.',
                 {type: 'info', key: 'forgot-password.send.success'}
             );
             return true;
-
         } catch (error) {
             // ValidationEngine throws "undefined" for failed validation
             if (!error) {
@@ -119,23 +128,17 @@ export default Controller.extend(ValidationEngine, {
                 return notifications.showAPIError(error);
             }
 
-            if (error && error.errors && isEmberArray(error.errors)) {
-                let [{message}] = error.errors;
+            if (error && error.payload && error.payload.errors && isEmberArray(error.payload.errors)) {
+                let [{message}] = error.payload.errors;
 
                 this.set('flowErrors', message);
 
-                if (message.match(/no user with that email/)) {
-                    this.get('model.errors').add('identification', '');
+                if (message.match(/no user|not found/)) {
+                    this.get('signin.errors').add('identification', '');
                 }
             } else {
                 notifications.showAPIError(error, {defaultErrorText: 'There was a problem with the reset, please try again.', key: 'forgot-password.send'});
             }
         }
-    }),
-
-    actions: {
-        authenticate() {
-            this.get('validateAndAuthenticate').perform();
-        }
-    }
+    })
 });

@@ -1,8 +1,5 @@
-/* eslint camelcase: [2, {properties: "never"}] */
-import Model from 'ember-data/model';
-import attr from 'ember-data/attr';
-import {belongsTo} from 'ember-data/relationships';
-import {inject as injectService} from '@ember/service';
+import Model, {attr, belongsTo} from '@ember-data/model';
+import {inject as service} from '@ember/service';
 
 export default Model.extend({
     token: attr('string'),
@@ -13,22 +10,21 @@ export default Model.extend({
     updatedAtUTC: attr('moment-utc'),
     updatedBy: attr('number'),
     status: attr('string'),
+
     role: belongsTo('role', {async: false}),
 
-    ajax: injectService(),
-    ghostPaths: injectService(),
+    ajax: service(),
+    ghostPaths: service(),
 
     resend() {
-        let fullInviteData = this.toJSON();
-
         let inviteData = {
-            email: fullInviteData.email,
-            role_id: fullInviteData.role
+            email: this.email,
+            role_id: this.role.id
         };
 
         let inviteUrl = this.get('ghostPaths.url').api('invites');
 
-        return this.get('ajax').post(inviteUrl, {
+        return this.ajax.post(inviteUrl, {
             data: JSON.stringify({invites: [inviteData]}),
             contentType: 'application/json'
         });

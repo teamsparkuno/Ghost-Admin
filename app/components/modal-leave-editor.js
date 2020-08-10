@@ -1,12 +1,14 @@
 import ModalComponent from 'ghost-admin/components/modal-base';
-import {invokeAction} from 'ember-invoke-action';
+import RSVP from 'rsvp';
 
 export default ModalComponent.extend({
     actions: {
         confirm() {
-            invokeAction(this, 'confirm').finally(() => {
-                this.send('closeModal');
-            });
+            this.confirm();
+            this.send('closeModal');
         }
-    }
+    },
+
+    // Allowed actions
+    confirm: () => RSVP.resolve()
 });

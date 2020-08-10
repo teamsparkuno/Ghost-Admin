@@ -1,11 +1,20 @@
-import resolver from './helpers/resolver';
-import {setResolver} from 'ember-mocha';
+import Application from 'ghost-admin/app';
+import config from 'ghost-admin/config/environment';
+import registerWaiter from 'ember-raf-scheduler/test-support/register-waiter';
+import start from 'ember-exam/test-support/start';
+import {setApplication} from '@ember/test-helpers';
 
-setResolver(resolver);
+import chai from 'chai';
+import chaiDom from 'chai-dom';
+chai.use(chaiDom);
 
-/* jshint ignore:start */
+setApplication(Application.create(config.APP));
+
+registerWaiter();
+
 mocha.setup({
     timeout: 15000,
     slow: 500
 });
-/* jshint ignore:end */
+
+start();

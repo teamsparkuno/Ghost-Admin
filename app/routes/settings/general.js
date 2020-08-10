@@ -1,15 +1,11 @@
 import AuthenticatedRoute from 'ghost-admin/routes/authenticated';
 import CurrentUserSettings from 'ghost-admin/mixins/current-user-settings';
 import RSVP from 'rsvp';
-import styleBody from 'ghost-admin/mixins/style-body';
-import {inject as injectService} from '@ember/service';
+import {inject as service} from '@ember/service';
 
-export default AuthenticatedRoute.extend(styleBody, CurrentUserSettings, {
-    config: injectService(),
-    settings: injectService(),
-
-    titleToken: 'Settings - General',
-    classNames: ['settings-view-general'],
+export default AuthenticatedRoute.extend(CurrentUserSettings, {
+    config: service(),
+    settings: service(),
 
     beforeModel() {
         this._super(...arguments);
@@ -20,24 +16,44 @@ export default AuthenticatedRoute.extend(styleBody, CurrentUserSettings, {
 
     model() {
         return RSVP.hash({
-            settings: this.get('settings').reload(),
+            settings: this.settings.reload(),
             availableTimezones: this.get('config.availableTimezones')
         });
     },
 
     setupController(controller, models) {
-        controller.set('model', models.settings);
-        controller.set('themes', this.get('store').peekAll('theme'));
+        // reset the leave setting transition
+        controller.set('showLeaveSettingsModal', false);
+        controller.set('leaveSettingsTransition', null);
         controller.set('availableTimezones', models.availableTimezones);
     },
 
     actions: {
         save() {
-            return this.get('controller').send('save');
+            return this.controller.send('save');
         },
 
         reloadSettings() {
-            return this.get('settings').reload();
+            return this.settings.reload();
+        },
+
+        willTransition(transition) {
+            let controller = this.controller;
+            let settings = this.settings;
+            let settingsIsDirty = settings.get('hasDirtyAttributes');
+
+            if (settingsIsDirty) {
+                transition.abort();
+                controller.send('toggleLeaveSettingsModal', transition);
+                return;
+            }
         }
+
+    },
+
+    buildRouteInfoMetadata() {
+        return {
+            titleToken: 'Settings - General'
+        };
     }
 });

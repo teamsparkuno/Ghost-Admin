@@ -1,112 +1,123 @@
-/* jshint expr:true */
 import NavItem from 'ghost-admin/models/navigation-item';
 import hbs from 'htmlbars-inline-precompile';
-import wait from 'ember-test-helpers/wait';
+import {click, find, render, triggerEvent} from '@ember/test-helpers';
 import {describe, it} from 'mocha';
 import {expect} from 'chai';
-import {setupComponentTest} from 'ember-mocha';
+import {setupRenderingTest} from 'ember-mocha';
 
 describe('Integration: Component: gh-navitem', function () {
-    setupComponentTest('gh-navitem', {
-        integration: true
-    });
+    setupRenderingTest();
 
     beforeEach(function () {
         this.set('baseUrl', 'http://localhost:2368');
     });
 
-    it('renders', function () {
+    it('renders', async function () {
         this.set('navItem', NavItem.create({label: 'Test', url: '/url'}));
 
-        this.render(hbs`{{gh-navitem navItem=navItem baseUrl=baseUrl}}`);
-        let $item = this.$('.gh-blognav-item');
+        await render(hbs`{{gh-navitem navItem=navItem baseUrl=baseUrl}}`);
+        let item = find('.gh-blognav-item');
 
-        expect($item.find('.gh-blognav-grab').length).to.equal(1);
-        expect($item.find('.gh-blognav-label').length).to.equal(1);
-        expect($item.find('.gh-blognav-url').length).to.equal(1);
-        expect($item.find('.gh-blognav-delete').length).to.equal(1);
+        expect(item.querySelector('.gh-blognav-grab')).to.exist;
+        expect(item.querySelector('.gh-blognav-label')).to.exist;
+        expect(item.querySelector('.gh-blognav-url')).to.exist;
+        expect(item.querySelector('.gh-blognav-delete')).to.exist;
 
         // doesn't show any errors
-        expect($item.hasClass('gh-blognav-item--error')).to.be.false;
-        expect($item.find('.error').length).to.equal(0);
-        expect($item.find('.response:visible').length).to.equal(0);
+        expect(find('.gh-blognav-item--error')).to.not.exist;
+        expect(find('.error')).to.not.exist;
+        expect(find('.response')).to.not.be.displayed;
     });
 
-    it('doesn\'t show drag handle for new items', function () {
+    it('doesn\'t show drag handle for new items', async function () {
         this.set('navItem', NavItem.create({label: 'Test', url: '/url', isNew: true}));
 
-        this.render(hbs`{{gh-navitem navItem=navItem baseUrl=baseUrl}}`);
-        let $item = this.$('.gh-blognav-item');
+        await render(hbs`{{gh-navitem navItem=navItem baseUrl=baseUrl}}`);
+        let item = find('.gh-blognav-item');
 
-        expect($item.find('.gh-blognav-grab').length).to.equal(0);
+        expect(item.querySelector('.gh-blognav-grab')).to.not.exist;
     });
 
-    it('shows add button for new items', function () {
+    it('shows add button for new items', async function () {
         this.set('navItem', NavItem.create({label: 'Test', url: '/url', isNew: true}));
 
-        this.render(hbs`{{gh-navitem navItem=navItem baseUrl=baseUrl}}`);
-        let $item = this.$('.gh-blognav-item');
+        await render(hbs`{{gh-navitem navItem=navItem baseUrl=baseUrl}}`);
+        let item = find('.gh-blognav-item');
 
-        expect($item.find('.gh-blognav-add').length).to.equal(1);
-        expect($item.find('.gh-blognav-delete').length).to.equal(0);
+        expect(item.querySelector('.gh-blognav-add')).to.exist;
+        expect(item.querySelector('.gh-blognav-delete')).to.not.exist;
     });
 
-    it('triggers delete action', function () {
+    it('triggers delete action', async function () {
         this.set('navItem', NavItem.create({label: 'Test', url: '/url'}));
 
         let deleteActionCallCount = 0;
-        this.on('deleteItem', (navItem) => {
+        this.set('deleteItem', (navItem) => {
             expect(navItem).to.equal(this.get('navItem'));
-            deleteActionCallCount++;
+            deleteActionCallCount += 1;
         });
 
-        this.render(hbs`{{gh-navitem navItem=navItem baseUrl=baseUrl deleteItem="deleteItem"}}`);
-        this.$('.gh-blognav-delete').trigger('click');
+        await render(hbs`{{gh-navitem navItem=navItem baseUrl=baseUrl deleteItem=(action deleteItem)}}`);
+        await click('.gh-blognav-delete');
 
         expect(deleteActionCallCount).to.equal(1);
     });
 
-    it('triggers add action', function () {
+    it('triggers add action', async function () {
         this.set('navItem', NavItem.create({label: 'Test', url: '/url', isNew: true}));
 
         let addActionCallCount = 0;
-        this.on('add', () => {
-            addActionCallCount++;
+        this.set('add', () => {
+            addActionCallCount += 1;
         });
 
-        this.render(hbs`{{gh-navitem navItem=navItem baseUrl=baseUrl addItem="add"}}`);
-        this.$('.gh-blognav-add').trigger('click');
+        await render(hbs`{{gh-navitem navItem=navItem baseUrl=baseUrl addItem=(action add)}}`);
+        await click('.gh-blognav-add');
 
         expect(addActionCallCount).to.equal(1);
     });
 
-    it('triggers update action', function () {
+    it('triggers update url action', async function () {
         this.set('navItem', NavItem.create({label: 'Test', url: '/url'}));
 
         let updateActionCallCount = 0;
-        this.on('update', () => {
-            updateActionCallCount++;
+        this.set('update', (value) => {
+            updateActionCallCount += 1;
+            return value;
         });
 
-        this.render(hbs`{{gh-navitem navItem=navItem baseUrl=baseUrl updateUrl="update"}}`);
-        this.$('.gh-blognav-url input').trigger('blur');
+        await render(hbs`{{gh-navitem navItem=navItem baseUrl=baseUrl updateUrl=(action update)}}`);
+        await triggerEvent('.gh-blognav-url input', 'blur');
 
         expect(updateActionCallCount).to.equal(1);
     });
 
-    it('displays inline errors', function () {
+    it('triggers update label action', async function () {
+        this.set('navItem', NavItem.create({label: 'Test', url: '/url'}));
+
+        let updateActionCallCount = 0;
+        this.set('update', (value) => {
+            updateActionCallCount += 1;
+            return value;
+        });
+
+        await render(hbs`{{gh-navitem navItem=navItem baseUrl=baseUrl updateLabel=(action update)}}`);
+        await triggerEvent('.gh-blognav-label input', 'blur');
+
+        expect(updateActionCallCount).to.equal(2);
+    });
+
+    it('displays inline errors', async function () {
         this.set('navItem', NavItem.create({label: '', url: ''}));
         this.get('navItem').validate();
 
-        this.render(hbs`{{gh-navitem navItem=navItem baseUrl=baseUrl}}`);
-        let $item = this.$('.gh-blognav-item');
+        await render(hbs`{{gh-navitem navItem=navItem baseUrl=baseUrl}}`);
+        let item = find('.gh-blognav-item');
 
-        return wait().then(() => {
-            expect($item.hasClass('gh-blognav-item--error')).to.be.true;
-            expect($item.find('.gh-blognav-label').hasClass('error')).to.be.true;
-            expect($item.find('.gh-blognav-label .response').text().trim()).to.equal('You must specify a label');
-            expect($item.find('.gh-blognav-url').hasClass('error')).to.be.true;
-            expect($item.find('.gh-blognav-url .response').text().trim()).to.equal('You must specify a URL or relative path');
-        });
+        expect(item).to.have.class('gh-blognav-item--error');
+        expect(item.querySelector('.gh-blognav-label')).to.have.class('error');
+        expect(item.querySelector('.gh-blognav-label .response')).to.have.trimmed.text('You must specify a label');
+        expect(item.querySelector('.gh-blognav-url')).to.have.class('error');
+        expect(item.querySelector('.gh-blognav-url .response')).to.have.trimmed.text('You must specify a URL or relative path');
     });
 });

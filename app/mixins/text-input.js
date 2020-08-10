@@ -1,8 +1,15 @@
-/* global device */
 import Mixin from '@ember/object/mixin';
 import {computed} from '@ember/object';
+import {inject as service} from '@ember/service';
+
+const keyCodes = {
+    13: 'Enter',
+    9: 'Tab'
+};
 
 export default Mixin.create({
+    userAgent: service(),
+
     attributeBindings: ['autofocus'],
 
     selectOnClick: false,
@@ -10,8 +17,8 @@ export default Mixin.create({
     stopEnterKeyDownPropagation: false,
 
     autofocus: computed(function () {
-        if (this.get('shouldFocus')) {
-            return (device.ios()) ? false : 'autofocus';
+        if (this.shouldFocus) {
+            return (this.userAgent.os.isIOS) ? false : 'autofocus';
         }
 
         return false;
@@ -23,7 +30,7 @@ export default Mixin.create({
     },
 
     click(event) {
-        if (this.get('selectOnClick')) {
+        if (this.selectOnClick) {
             event.currentTarget.select();
         }
     },
@@ -32,14 +39,14 @@ export default Mixin.create({
         // stop event propagation when pressing "enter"
         // most useful in the case when undesired (global) keyboard shortcuts
         // are getting triggered while interacting with this particular input element.
-        if (this.get('stopEnterKeyDownPropagation') && event.keyCode === 13) {
+        if (event.keyCode === 13 && this.stopEnterKeyDownPropagation) {
             event.stopPropagation();
 
             return true;
         }
 
         // prevent default TAB behaviour if we have a keyEvent for it
-        if (event.keyCode === 9 && typeof this.get('keyEvents.9') === 'function') {
+        if (event.keyCode === 9 && typeof this.get('keyEvents.Tab') === 'function') {
             event.preventDefault();
         }
 
@@ -48,18 +55,33 @@ export default Mixin.create({
 
     keyPress(event) {
         // prevent default ENTER behaviour if we have a keyEvent for it
-        if (event.keyCode === 13 && typeof this.get('keyEvents.13') === 'function') {
+        if (event.keyCode === 13 && typeof this.get('keyEvents.Enter') === 'function') {
             event.preventDefault();
         }
 
         this._super(...arguments);
     },
 
+    keyUp(event) {
+        if (event.keyCode) {
+            let methodName = this._getMethodFromKeyCode(event.keyCode);
+            let method = this.get(`keyEvents.${methodName}`);
+            if (method) {
+                method(event.target.value);
+            }
+        }
+    },
+
     _focus() {
         // Until mobile safari has better support
         // for focusing, we just ignore it
-        if (this.get('shouldFocus') && !device.ios()) {
+        if (this.shouldFocus && !this.userAgent.os.isIOS) {
             this.element.focus();
         }
+    },
+
+    _getMethodFromKeyCode(keyCode) {
+        let methodName = keyCodes[keyCode.toString()];
+        return methodName;
     }
 });

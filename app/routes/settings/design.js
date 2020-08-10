@@ -2,14 +2,10 @@ import $ from 'jquery';
 import AuthenticatedRoute from 'ghost-admin/routes/authenticated';
 import CurrentUserSettings from 'ghost-admin/mixins/current-user-settings';
 import RSVP from 'rsvp';
-import styleBody from 'ghost-admin/mixins/style-body';
-import {inject as injectService} from '@ember/service';
+import {inject as service} from '@ember/service';
 
-export default AuthenticatedRoute.extend(styleBody, CurrentUserSettings, {
-    settings: injectService(),
-
-    titleToken: 'Settings - Design',
-    classNames: ['settings-view-design'],
+export default AuthenticatedRoute.extend(CurrentUserSettings, {
+    settings: service(),
 
     beforeModel() {
         this._super(...arguments);
@@ -19,15 +15,20 @@ export default AuthenticatedRoute.extend(styleBody, CurrentUserSettings, {
 
     model() {
         return RSVP.hash({
-            settings: this.get('settings').reload(),
-            themes: this.get('store').findAll('theme')
+            settings: this.settings.reload(),
+            themes: this.store.findAll('theme')
         });
     },
 
-    setupController(controller, models) {
-        controller.set('model', models.settings);
-        controller.set('themes', this.get('store').peekAll('theme'));
-        this.get('controller').send('reset');
+    setupController(controller) {
+        controller.set('themes', this.store.peekAll('theme'));
+        this.controller.send('reset');
+    },
+
+    deactivate() {
+        this._super(...arguments);
+        this.controller.set('leaveSettingsTransition', null);
+        this.controller.set('showLeaveSettingsModal', false);
     },
 
     actions: {
@@ -36,18 +37,28 @@ export default AuthenticatedRoute.extend(styleBody, CurrentUserSettings, {
             // on the page that we're about to save.
             $('.page-actions .gh-btn-blue').focus();
 
-            this.get('controller').send('save');
+            this.controller.send('save');
         },
 
-        willTransition() {
-            // reset the model so that our CPs re-calc and unsaved changes aren't
-            // persisted across transitions
-            this.set('controller.model', null);
-            return this._super(...arguments);
+        willTransition(transition) {
+            let controller = this.controller;
+            let modelIsDirty = controller.dirtyAttributes;
+
+            if (modelIsDirty) {
+                transition.abort();
+                controller.send('toggleLeaveSettingsModal', transition);
+                return;
+            }
         },
 
         activateTheme(theme) {
-            return this.get('controller').send('activateTheme', theme);
+            return this.controller.send('activateTheme', theme);
         }
+    },
+
+    buildRouteInfoMetadata() {
+        return {
+            titleToken: 'Settings - Design'
+        };
     }
 });
